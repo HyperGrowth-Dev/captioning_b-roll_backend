@@ -63,24 +63,35 @@ class BrollAnalyzer:
     def get_keywords_from_openai(self, text: str) -> List[Dict[str, float]]:
         """Use OpenAI to analyze text and suggest keywords for b-roll footage"""
         try:
-            prompt = f"""Analyze this text and suggest 1-3 specific keywords for finding relevant b-roll footage on Pexels. 
-            The keywords should be specific and visual, good for finding stock footage.
-            Format the response as a JSON array of objects, each with 'keyword' and 'confidence' (0-1) fields.
+            prompt = f"""Analyze this transcript and suggest specific keywords for finding relevant b-roll footage on Pexels.
+            Consider the overall context and themes of the video.
+            For each suggestion, provide:
+            1. A specific, visual keyword good for finding stock footage
+            2. The timestamp where this b-roll would be most relevant
+            3. A confidence score (0-1) based on how well the keyword matches the context
+            4. A brief explanation of why this b-roll would work well at this point
+            
+            Format the response as a JSON array of objects, each with:
+            - 'keyword': string
+            - 'timestamp': number (in seconds)
+            - 'confidence': number (0-1)
+            - 'explanation': string
+            
             Only respond with the JSON array, no other text.
             
-            Text to analyze: "{text}"
+            Transcript to analyze: "{text}"
             """
             
-            logger.debug(f"Sending text to OpenAI: {text}")
+            logger.debug(f"Sending transcript to OpenAI: {text}")
             try:
                 response = self.openai_client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
-                        {"role": "system", "content": "You are a video editor's assistant, expert at finding relevant b-roll footage. You must respond with ONLY a JSON array of objects with 'keyword' and 'confidence' fields."},
+                        {"role": "system", "content": "You are a video editor's assistant, expert at finding relevant b-roll footage. You must respond with ONLY a JSON array of objects with 'keyword', 'timestamp', 'confidence', and 'explanation' fields."},
                         {"role": "user", "content": prompt}
                     ],
                     temperature=0.3,
-                    max_tokens=150
+                    max_tokens=500
                 )
                 
                 content = response.choices[0].message.content.strip()
@@ -120,61 +131,55 @@ class BrollAnalyzer:
             return []
 
     def get_broll_suggestions(self, segments: List[Dict]) -> List[Dict]:
-        """Generate b-roll suggestions throughout the video"""
+        """Generate b-roll suggestions for the entire video transcript"""
         logger.info("Starting b-roll suggestions generation...")
-        suggestions = []
-        last_suggestion_time = -self.min_time_between_suggestions
-
-        for segment in segments:
-            start_time = segment['start']
-            end_time = segment['end']
-            text = segment['text']
-            
-            # Skip if we're too close to the last suggestion
-            if start_time - last_suggestion_time < self.min_time_between_suggestions:
-                logger.debug(f"Skipping segment at {start_time:.2f}s - too close to last suggestion")
-                continue
-            
-            # Get keywords from OpenAI
-            keywords = self.get_keywords_from_openai(text)
-            if not keywords:
-                logger.debug(f"No keywords found for segment at {start_time:.2f}s")
-                continue
-                
-            logger.info(f"Found {len(keywords)} keywords for segment at {start_time:.2f}s")
-            
-            # Try each keyword in order of confidence
-            for keyword_info in sorted(keywords, key=lambda x: x['confidence'], reverse=True):
-                keyword = keyword_info['keyword']
-                confidence = keyword_info['confidence']
-                
-                try:
-                    logger.info(f"Searching for b-roll at {start_time:.2f}s with keyword: {keyword}")
-                    broll_results = self.search_broll(keyword, end_time - start_time)
-                    
-                    if broll_results:
-                        suggestion = {
-                            'timestamp': start_time,
-                            'duration': end_time - start_time,
-                            'keyword': keyword,
-                            'confidence': confidence,
-                            'context': text[:100] + "...",
-                            'broll_options': broll_results[:3]  # Get top 3 b-roll options
-                        }
-                        suggestions.append(suggestion)
-                        last_suggestion_time = start_time
-                        logger.info(f"Added b-roll suggestion at {start_time:.2f}s with keyword: {keyword}")
-                        logger.debug(f"Suggestion details: {suggestion}")
-                        break  # Stop trying keywords once we find good b-roll
-                    else:
-                        logger.warning(f"No b-roll results found for keyword: {keyword} at {start_time:.2f}s")
-                except Exception as e:
-                    logger.error(f"Error getting b-roll for keyword '{keyword}' at {start_time:.2f}s: {str(e)}")
-                    logger.error(f"Error details: {traceback.format_exc()}")
-                    continue
+        
+        # Combine all segments into a single transcript
+        transcript = " ".join(segment['text'] for segment in segments)
+        logger.info(f"Combined transcript length: {len(transcript)} characters")
+        
+        # Get keywords and timestamps from OpenAI
+        suggestions = self.get_keywords_from_openai(transcript)
+        if not suggestions:
+            logger.warning("No b-roll suggestions generated from transcript")
+            return []
             
         logger.info(f"Generated {len(suggestions)} b-roll suggestions")
-        return suggestions
+        
+        # Get b-roll footage for each suggestion
+        final_suggestions = []
+        for suggestion in suggestions:
+            try:
+                keyword = suggestion['keyword']
+                timestamp = suggestion['timestamp']
+                confidence = suggestion['confidence']
+                explanation = suggestion['explanation']
+                
+                logger.info(f"Searching for b-roll at {timestamp:.2f}s with keyword: {keyword}")
+                broll_results = self.search_broll(keyword, 5.0)  # Default duration of 5 seconds
+                
+                if broll_results:
+                    final_suggestion = {
+                        'timestamp': timestamp,
+                        'duration': 5.0,  # Default duration
+                        'keyword': keyword,
+                        'confidence': confidence,
+                        'context': explanation,
+                        'broll_options': broll_results[:3]  # Get top 3 b-roll options
+                    }
+                    final_suggestions.append(final_suggestion)
+                    logger.info(f"Added b-roll suggestion at {timestamp:.2f}s with keyword: {keyword}")
+                    logger.debug(f"Suggestion details: {final_suggestion}")
+                else:
+                    logger.warning(f"No b-roll results found for keyword: {keyword} at {timestamp:.2f}s")
+                    
+            except Exception as e:
+                logger.error(f"Error processing suggestion for keyword '{keyword}' at {timestamp:.2f}s: {str(e)}")
+                logger.error(f"Error details: {traceback.format_exc()}")
+                continue
+        
+        logger.info(f"Successfully processed {len(final_suggestions)} b-roll suggestions")
+        return final_suggestions
 
     def search_broll(self, keyword: str, duration: float) -> List[Dict]:
         """Search for b-roll footage using Pexels API"""
