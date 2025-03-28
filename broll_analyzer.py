@@ -51,7 +51,7 @@ class BrollAnalyzer:
         if not openai_key:
             raise ValueError("OPENAI_API_KEY is required")
         try:
-            self.openai_client = OpenAI()
+            self.openai_client = OpenAI(api_key=openai_key)
             logger.info("OpenAI client initialized")
         except Exception as e:
             logger.error(f"Failed to initialize OpenAI client: {str(e)}")
