@@ -1,0 +1,6 @@
+moviepy==1.0.3
+SpeechRecognition==3.9.0
+openai==0.28.1
+Pillow==9.5.0
+python-dotenv==0.21.1
+requests==2.31.0 
