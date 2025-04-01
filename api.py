@@ -1,12 +1,13 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
 import os
 from main import VideoProcessor
 import tempfile
 import shutil
-from utils import setup_logging
+from utils import setup_logging, ensure_directory
+from datetime import datetime
 
 # Initialize logger
 logger = setup_logging('api', 'api.log')
@@ -25,6 +26,10 @@ app.add_middleware(
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
 )
+
+# Create necessary directories
+ensure_directory('uploads')
+ensure_directory('output')
 
 # Initialize video processor
 try:
@@ -58,42 +63,64 @@ async def process_video(file: UploadFile = File(...)):
     3. Return both captions and b-roll suggestions
     """
     try:
-        # Create a temporary directory for processing
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Save uploaded file
-            input_path = os.path.join(temp_dir, file.filename)
-            with open(input_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            
-            logger.info(f"Processing video: {file.filename}")
-            
-            # Process the video
-            video_processor.process_video(input_path)
-            
-            # Read the results
-            output_dir = 'output'
-            results = {
-                'captions': [],
-                'broll_suggestions': []
-            }
-            
-            # Read captions if they exist
-            captions_file = os.path.join(output_dir, 'captions.txt')
-            if os.path.exists(captions_file):
-                with open(captions_file, 'r') as f:
-                    results['captions'] = f.readlines()
-            
-            # Read b-roll analysis if it exists
-            analysis_file = os.path.join(output_dir, 'broll_analysis.json')
-            if os.path.exists(analysis_file):
-                with open(analysis_file, 'r') as f:
-                    results['broll_suggestions'] = f.read()
-            
-            return JSONResponse(content=results)
+        # Generate unique filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        original_filename = os.path.splitext(file.filename)[0]
+        extension = os.path.splitext(file.filename)[1]
+        unique_filename = f"{original_filename}_{timestamp}{extension}"
+        
+        # Save uploaded file to uploads directory
+        upload_path = os.path.join('uploads', unique_filename)
+        with open(upload_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        logger.info(f"Saved uploaded file to: {upload_path}")
+        
+        # Process the video
+        video_processor.process_video(upload_path)
+        
+        # Read the results
+        output_dir = 'output'
+        results = {
+            'captions': [],
+            'broll_suggestions': [],
+            'processed_video': None
+        }
+        
+        # Read captions if they exist
+        captions_file = os.path.join(output_dir, 'captions.txt')
+        if os.path.exists(captions_file):
+            with open(captions_file, 'r') as f:
+                results['captions'] = f.readlines()
+        
+        # Read b-roll analysis if it exists
+        analysis_file = os.path.join(output_dir, 'broll_analysis.json')
+        if os.path.exists(analysis_file):
+            with open(analysis_file, 'r') as f:
+                results['broll_suggestions'] = f.read()
+        
+        # Get the processed video path
+        processed_video = os.path.join(output_dir, 'processed_video.mp4')
+        if os.path.exists(processed_video):
+            # Create a unique name for the processed video
+            processed_filename = f"processed_{original_filename}_{timestamp}{extension}"
+            processed_path = os.path.join(output_dir, processed_filename)
+            shutil.copy2(processed_video, processed_path)
+            results['processed_video'] = processed_filename
+        
+        return JSONResponse(content=results)
             
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/download/{filename}")
+async def download_video(filename: str):
+    """Download a processed video file"""
+    file_path = os.path.join('output', filename)
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(file_path, filename=filename)
 
 @app.get("/health")
 async def health_check():

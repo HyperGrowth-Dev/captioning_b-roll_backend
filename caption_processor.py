@@ -12,10 +12,10 @@ class CaptionProcessor:
         print("Loading Whisper model...")
         self.model = whisper.load_model("base")
         self.max_segment_duration = 5.0  # Maximum duration for a segment in seconds
-        self.max_words_per_segment = 12  # Maximum number of words per segment
+        self.max_words_per_segment = 3  # Maximum number of words per segment
 
     def split_long_segment(self, segment):
-        """Split a long segment into smaller ones based on words and duration"""
+        """Split a segment into smaller ones with at most 3 words each"""
         words = segment.get('words', [])
         if not words:
             return [segment]
@@ -29,9 +29,8 @@ class CaptionProcessor:
             word_count += 1
             current_words.append(word)
             
-            # Split if we hit the maximum words or duration threshold
-            duration = word['end'] - current_start
-            if word_count >= self.max_words_per_segment or duration >= self.max_segment_duration:
+            # Split after every 3 words
+            if word_count >= self.max_words_per_segment:
                 # Create new segment
                 new_segment = {
                     'start': current_start,
