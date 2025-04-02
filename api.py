@@ -8,6 +8,8 @@ import tempfile
 import shutil
 from utils import setup_logging, ensure_directory
 from datetime import datetime
+import traceback
+import time
 
 # Initialize logger
 logger = setup_logging('api', 'api.log')
@@ -50,7 +52,8 @@ async def root():
             "/health": "Check API health status",
             "/docs": "API documentation (Swagger UI)",
             "/redoc": "API documentation (ReDoc)",
-            "/process-video": "Upload and process a video"
+            "/process-video": "Upload and process a video",
+            "/download/{filename}": "Download a processed video"
         }
     }
 
@@ -66,11 +69,11 @@ async def process_video(file: UploadFile = File(...)):
         # Generate unique filename
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         original_filename = os.path.splitext(file.filename)[0]
-        extension = os.path.splitext(file.filename)[1]
-        unique_filename = f"{original_filename}_{timestamp}{extension}"
+        # Always use .mp4 extension for processed videos
+        processed_filename = f"processed_{original_filename}_{timestamp}.mp4"
         
         # Save uploaded file to uploads directory
-        upload_path = os.path.join('uploads', unique_filename)
+        upload_path = os.path.join('uploads', f"{original_filename}_{timestamp}{os.path.splitext(file.filename)[1]}")
         with open(upload_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         
@@ -102,16 +105,32 @@ async def process_video(file: UploadFile = File(...)):
         # Get the processed video path
         processed_video = os.path.join(output_dir, 'processed_video.mp4')
         if os.path.exists(processed_video):
-            # Create a unique name for the processed video
-            processed_filename = f"processed_{original_filename}_{timestamp}{extension}"
+            # Add a small delay to ensure the file is fully written
+            time.sleep(1)
+            
+            # Move the processed video to its final location
             processed_path = os.path.join(output_dir, processed_filename)
-            shutil.copy2(processed_video, processed_path)
+            logger.info(f"Moving processed video from {processed_video} to {processed_path}")
+            
+            # Try to move the file, if it fails, try to copy and then delete
+            try:
+                shutil.move(processed_video, processed_path)
+            except Exception as e:
+                logger.warning(f"Failed to move file, trying copy and delete: {str(e)}")
+                shutil.copy2(processed_video, processed_path)
+                os.remove(processed_video)
+            
             results['processed_video'] = processed_filename
+            logger.info(f"Successfully moved processed video to {processed_path}")
+        else:
+            logger.error(f"Processed video not found at {processed_video}")
+            raise HTTPException(status_code=500, detail="Processed video not found")
         
         return JSONResponse(content=results)
             
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/{filename}")
@@ -120,7 +139,26 @@ async def download_video(filename: str):
     file_path = os.path.join('output', filename)
     if not os.path.exists(file_path):
         raise HTTPException(status_code=404, detail="File not found")
-    return FileResponse(file_path, filename=filename)
+    
+    # Check if the file is a video
+    if not filename.lower().endswith(('.mp4', '.avi', '.mov')):
+        raise HTTPException(status_code=400, detail="Invalid file type. Only video files are allowed.")
+    
+    # Get the content type based on file extension
+    content_type = {
+        '.mp4': 'video/mp4',
+        '.avi': 'video/x-msvideo',
+        '.mov': 'video/quicktime'
+    }.get(os.path.splitext(filename)[1].lower(), 'application/octet-stream')
+    
+    return FileResponse(
+        file_path,
+        filename=filename,
+        media_type=content_type,
+        headers={
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+    )
 
 @app.get("/health")
 async def health_check():
