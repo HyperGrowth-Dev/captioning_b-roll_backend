@@ -3,6 +3,7 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import { processVideo, downloadProcessedVideo } from '../services/videoService';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
+import clsx from 'clsx';
 
 const fonts = [
   { 
@@ -111,6 +112,7 @@ function ProcessingPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
   const [error, setError] = useState(null);
+  const [showProcessedVideo, setShowProcessedVideo] = useState(false);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -154,31 +156,58 @@ function ProcessingPage() {
 
   const handleProcessVideo = async () => {
     try {
+      console.log('=== STARTING VIDEO PROCESSING ===');
       setIsProcessing(true);
       setError(null);
-      const result = await processVideo(location.state.file, selectedFont, selectedColor);
+      console.log('Selected font:', selectedFont);
+      console.log('Selected color:', selectedColor);
+      console.log('Video file:', location.state.file);
       
-      // Handle the processed video result
-      if (result.processed_video) {
-        // Store the processed video URL for preview and download
-        setProcessedVideoUrl(result.processed_video);
-        
-        // Automatically download the processed video
-        await downloadProcessedVideo(result.processed_video);
+      const result = await processVideo(location.state.file, selectedFont, selectedColor);
+      console.log('=== PROCESSING RESULT ===', result);
+      
+      if (result.filename) {
+        console.log('=== GETTING PROCESSED VIDEO URL ===');
+        const processedUrl = await downloadProcessedVideo(result.filename);
+        console.log('=== PROCESSED VIDEO URL CREATED ===', processedUrl);
+        setProcessedVideoUrl(processedUrl);
+        setShowProcessedVideo(true);
+      } else {
+        console.log('=== NO FILENAME IN RESULT ===');
       }
     } catch (error) {
-      console.error('Error processing video:', error);
+      console.error('=== ERROR PROCESSING VIDEO ===', error);
       setError(error.message || 'Failed to process video');
     } finally {
       setIsProcessing(false);
     }
   };
 
+  const handleDownload = async () => {
+    if (processedVideoUrl) {
+      const link = document.createElement('a');
+      link.href = processedVideoUrl;
+      link.setAttribute('download', 'processed_video.mp4');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  };
+
+  // Add useEffect to log state changes
+  useEffect(() => {
+    console.log('=== STATE UPDATE ===');
+    console.log('Processed video URL:', processedVideoUrl);
+    console.log('Show processed video:', showProcessedVideo);
+    console.log('Is processing:', isProcessing);
+  }, [processedVideoUrl, showProcessedVideo, isProcessing]);
+
   return (
     <div className="min-h-screen flex">
       {/* Video Preview Section - Fixed position */}
       <div className="fixed left-0 w-1/2 h-screen bg-purple-950/50 p-8 flex items-center justify-center">
-        <div className="w-full max-w-2xl mx-auto flex items-center justify-center">
+        <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center space-y-4">
+          {/* Video Preview */}
           <div 
             className="relative w-full rounded-xl overflow-hidden cyber-border bg-white"
             style={{
@@ -190,13 +219,16 @@ function ProcessingPage() {
             {videoUrl ? (
               <video
                 ref={videoRef}
-                src={videoUrl}
+                src={showProcessedVideo ? processedVideoUrl : videoUrl}
                 className="absolute inset-0 w-full h-full object-contain"
                 autoPlay
                 loop
                 muted
                 playsInline
                 onLoadedMetadata={handleVideoLoad}
+                onError={(e) => console.error('=== VIDEO ERROR ===', e)}
+                onLoadStart={() => console.log('=== VIDEO LOAD STARTED ===')}
+                onLoadedData={() => console.log('=== VIDEO DATA LOADED ===')}
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
@@ -204,23 +236,28 @@ function ProcessingPage() {
               </div>
             )}
             
-            {/* Always visible blur overlay */}
-            <div className="preview-overlay" />
-            
-            {/* Sparkles layer - Always visible */}
-            <div className="absolute inset-0">
-              {[...Array(10)].map((_, i) => (
-                <div
-                  key={i}
-                  className="sparkle"
-                  style={{
-                    left: `${Math.random() * 100}%`,
-                    top: `${Math.random() * 100}%`,
-                    animationDelay: `${Math.random() * 2}s`
-                  }}
-                />
-              ))}
-            </div>
+            {/* Blur and Sparkles overlay - Show until video is processed */}
+            {(!processedVideoUrl || isProcessing) && (
+              <>
+                {/* Blur overlay */}
+                <div className="preview-overlay" />
+                
+                {/* Sparkles layer */}
+                <div className="absolute inset-0">
+                  {[...Array(10)].map((_, i) => (
+                    <div
+                      key={i}
+                      className="sparkle"
+                      style={{
+                        left: `${Math.random() * 100}%`,
+                        top: `${Math.random() * 100}%`,
+                        animationDelay: `${Math.random() * 2}s`
+                      }}
+                    />
+                  ))}
+                </div>
+              </>
+            )}
             
             {/* Processing overlay - Only show when processing */}
             {isProcessing && (
@@ -232,26 +269,43 @@ function ProcessingPage() {
                 </div>
               </div>
             )}
-
-            {/* Caption preview layer */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              {selectedFont && selectedColor && !isProcessing && (
-                <div
-                  className={`${selectedColor.textClass} px-6 py-3 rounded text-3xl`}
-                  style={{
-                    ...selectedFont.previewStyle,
-                    fontSize: '2rem',
-                    lineHeight: '1.2',
-                    maxWidth: '80%',
-                    textAlign: 'center',
-                    textShadow: '2px 2px 4px rgba(0, 0, 0, 0.5)'
-                  }}
-                >
-                  Preview Caption Text
-                </div>
-              )}
-            </div>
           </div>
+
+          {/* Video Toggle Controls */}
+          {processedVideoUrl && !isProcessing && (
+            <div className="flex flex-col space-y-4">
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setShowProcessedVideo(false)}
+                  className={clsx(
+                    'px-4 py-2 rounded-lg transition-all',
+                    !showProcessedVideo
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  )}
+                >
+                  Original Video
+                </button>
+                <button
+                  onClick={() => setShowProcessedVideo(true)}
+                  className={clsx(
+                    'px-4 py-2 rounded-lg transition-all',
+                    showProcessedVideo
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
+                  )}
+                >
+                  Processed Video
+                </button>
+              </div>
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all"
+              >
+                Download Processed Video
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -419,26 +473,6 @@ function ProcessingPage() {
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
                   {isProcessing ? 'Processing...' : 'Process Video'}
-                </motion.button>
-              )}
-            </AnimatePresence>
-            
-            {/* Download Button - Show after processing */}
-            <AnimatePresence mode="wait">
-              {processedVideoUrl && !isProcessing && (
-                <motion.button
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  onClick={() => downloadProcessedVideo(processedVideoUrl)}
-                  className="w-full p-6 rounded-xl cyber-border backdrop-blur-xl bg-green-600/30 hover:bg-green-500/40 
-                           transition-all duration-300 text-green-100 text-xl font-semibold flex items-center justify-center gap-2"
-                  whileHover={{ scale: 1.02 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
-                  <ArrowDownTrayIcon className="w-5 h-5" />
-                  Download Processed Video
                 </motion.button>
               )}
             </AnimatePresence>
