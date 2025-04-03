@@ -88,84 +88,52 @@ class VideoProcessor:
             logger.error(f"Error extracting audio: {str(e)}")
             return None
 
-    def process_video(self, input_video_path):
-        """Process video and add captions"""
+    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=48):
+        """Process a video file with custom font and color settings"""
         try:
-            logger.info(f"Processing video: {input_video_path}")
+            # Load video
+            video = VideoFileClip(input_path)
             
-            # Step 1: Extract audio
-            audio_path = self.extract_audio(input_video_path)
-            if not audio_path:
-                return
+            # Extract audio
+            audio = video.audio
+            audio_path = "temp/audio.wav"
+            audio.write_audiofile(audio_path)
             
-            # Step 2: Generate captions using CaptionProcessor
-            logger.info("Generating captions...")
+            # Generate captions
             segments = self.caption_processor.generate_captions(audio_path)
-            if not segments:
-                logger.error("No segments generated from audio")
-                return
             
-            logger.info(f"Generated {len(segments)} segments")
-            logger.debug(f"First segment: {segments[0] if segments else None}")
+            # Create caption clips with custom settings
+            caption_clips = self.caption_processor.create_caption_clips(
+                segments, 
+                video.w,
+                font=font,
+                color=color,
+                font_size=font_size
+            )
             
-            # Save transcript
-            self.caption_processor.save_transcript(segments)
-            
-            # Step 3: Analyze for b-roll opportunities
-            logger.info("Analyzing for b-roll opportunities...")
-            broll_analysis = self.broll_analyzer.analyze_transcript(segments)
-            
-            if not broll_analysis:
-                logger.error("No b-roll analysis generated")
-                return
-                
-            logger.info("B-roll analysis completed")
-            logger.debug(f"Analysis content: {broll_analysis}")
-            
-            # Save b-roll analysis
-            self.broll_analyzer.save_analysis(broll_analysis)
-            
-            # Print b-roll analysis in readable format
-            print_broll_analysis(broll_analysis)
-            
-            # Step 4: Load the video
-            logger.info("Loading video for caption overlay...")
-            video = VideoFileClip(input_video_path)
-            
-            # Step 5: Create caption clips
-            logger.info("Creating caption clips...")
-            caption_clips = self.caption_processor.create_caption_clips(segments, video.w)
-            
-            # Step 6: Add captions to video
-            logger.info("Compositing final video...")
+            # Combine video and captions
             final_video = CompositeVideoClip([video] + caption_clips)
             
-            # Create output directory if it doesn't exist
-            ensure_directory('output')
-            
-            # Generate output filename
+            # Save processed video
             output_path = os.path.join('output', 'processed_video.mp4')
-            
-            logger.info("Rendering final video...")
-            final_video.write_videofile(output_path, 
-                                      codec='libx264', 
-                                      audio_codec='aac',
-                                      threads=4,
-                                      preset='medium')
+            final_video.write_videofile(
+                output_path,
+                codec='libx264',
+                audio_codec='aac',
+                temp_audiofile='temp/temp-audio.m4a',
+                remove_temp=True
+            )
             
             # Clean up
             video.close()
             final_video.close()
+            os.remove(audio_path)
             
-            logger.info(f"Video processing complete! Output saved to: {output_path}")
+            return output_path
             
         except Exception as e:
             logger.error(f"Error processing video: {str(e)}")
-            logger.error(f"Error details: {traceback.format_exc()}")
             raise
-        finally:
-            # Clean up all temporary files
-            self.temp_manager.cleanup_all()
 
 def main():
     processor = VideoProcessor()

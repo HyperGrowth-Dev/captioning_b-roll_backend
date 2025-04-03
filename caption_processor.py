@@ -13,6 +13,10 @@ class CaptionProcessor:
         self.model = whisper.load_model("base")
         self.max_segment_duration = 5.0  # Maximum duration for a segment in seconds
         self.max_words_per_segment = 3  # Maximum number of words per segment
+        
+        # Get the absolute path to the static/fonts directory
+        self.base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.fonts_dir = os.path.join(self.base_dir, 'static', 'fonts')
 
     def split_long_segment(self, segment):
         """Split a segment into smaller ones with at most 3 words each"""
@@ -90,27 +94,37 @@ class CaptionProcessor:
             print(f"Error processing audio: {e}")
             return None
 
-    def create_caption_clips(self, segments, video_width):
-        """Create individual caption clips for each segment"""
+    def create_caption_clips(self, segments, video_width, font="Montserrat-Bold", color="white", font_size=48):
+        """Create individual caption clips for each segment with custom font and color settings"""
         caption_clips = []
+        
+        # Get the absolute path to the font file
+        font_path = os.path.join(self.fonts_dir, f"{font}.ttf")
+        print(f"Using font path: {font_path}")  # Debug print
+        print(f"Using font size: {font_size}")  # Debug print
+        
+        # Check if font file exists
+        if not os.path.exists(font_path):
+            print(f"Font file not found: {font_path}")  # Debug print
+            # Fallback to system font
+            font_path = "/System/Library/Fonts/Helvetica.ttc"
+            print(f"Falling back to: {font_path}")  # Debug print
+        
         for segment in segments:
             start_time = segment['start']
             end_time = segment['end']
             text = segment['text'].strip()
             
             if text:  # Only create clips for non-empty text
-                # Create text with outline effect
-                caption_clip = (TextClip(text,
-                                       font="/System/Library/Fonts/Avenir Next.ttc",
-                                       fontsize=42,
-                                       color='white',
-                                       stroke_color='black',
-                                       stroke_width=1,
-                                       size=(int(video_width * 0.8), None),
-                                       method='caption')
-                              .set_duration(end_time - start_time)
-                              .set_position(('center', 550))
-                              .set_start(start_time))
+                # Create text with custom settings
+                caption_clip = (TextClip(text.upper(),
+                                    font=font_path,  # Use the absolute path
+                                    fontsize=font_size,
+                                    color=color)
+                            .set_duration(end_time - start_time)
+                            .set_position(('center', 550))
+                            .set_start(start_time))
+                
                 caption_clips.append(caption_clip)
         
         return caption_clips

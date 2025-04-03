@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from typing import List, Dict
@@ -58,79 +58,45 @@ async def root():
     }
 
 @app.post("/process-video")
-async def process_video(file: UploadFile = File(...)):
-    """
-    Process a video file to:
-    1. Generate captions
-    2. Analyze for b-roll opportunities
-    3. Return both captions and b-roll suggestions
-    """
+async def process_video(
+    file: UploadFile = File(...),
+    font: str = Form("Montserrat-Bold"),  # Default font
+    color: str = Form("white"),  # Default color
+    font_size: int = Form(48)  # Default font size
+):
+    """Process uploaded video file"""
     try:
-        # Generate unique filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        original_filename = os.path.splitext(file.filename)[0]
-        # Always use .mp4 extension for processed videos
-        processed_filename = f"processed_{original_filename}_{timestamp}.mp4"
+        # Create uploads directory if it doesn't exist
+        os.makedirs("uploads", exist_ok=True)
         
-        # Save uploaded file to uploads directory
-        upload_path = os.path.join('uploads', f"{original_filename}_{timestamp}{os.path.splitext(file.filename)[1]}")
-        with open(upload_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Save uploaded file
+        file_path = os.path.join("uploads", file.filename)
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
         
-        logger.info(f"Saved uploaded file to: {upload_path}")
+        # Process video
+        processor = VideoProcessor()
+        output_path = processor.process_video(
+            file_path,
+            font=font,
+            color=color,
+            font_size=font_size
+        )
         
-        # Process the video
-        video_processor.process_video(upload_path)
+        # Clean up uploaded file
+        os.remove(file_path)
         
-        # Read the results
-        output_dir = 'output'
-        results = {
-            'captions': [],
-            'broll_suggestions': [],
-            'processed_video': None
-        }
-        
-        # Read captions if they exist
-        captions_file = os.path.join(output_dir, 'captions.txt')
-        if os.path.exists(captions_file):
-            with open(captions_file, 'r') as f:
-                results['captions'] = f.readlines()
-        
-        # Read b-roll analysis if it exists
-        analysis_file = os.path.join(output_dir, 'broll_analysis.json')
-        if os.path.exists(analysis_file):
-            with open(analysis_file, 'r') as f:
-                results['broll_suggestions'] = f.read()
-        
-        # Get the processed video path
-        processed_video = os.path.join(output_dir, 'processed_video.mp4')
-        if os.path.exists(processed_video):
-            # Add a small delay to ensure the file is fully written
-            time.sleep(1)
-            
-            # Move the processed video to its final location
-            processed_path = os.path.join(output_dir, processed_filename)
-            logger.info(f"Moving processed video from {processed_video} to {processed_path}")
-            
-            # Try to move the file, if it fails, try to copy and then delete
-            try:
-                shutil.move(processed_video, processed_path)
-            except Exception as e:
-                logger.warning(f"Failed to move file, trying copy and delete: {str(e)}")
-                shutil.copy2(processed_video, processed_path)
-                os.remove(processed_video)
-            
-            results['processed_video'] = processed_filename
-            logger.info(f"Successfully moved processed video to {processed_path}")
-        else:
-            logger.error(f"Processed video not found at {processed_video}")
-            raise HTTPException(status_code=500, detail="Processed video not found")
-        
-        return JSONResponse(content=results)
-            
+        # Return the filename of the processed video
+        return JSONResponse(
+            content={
+                "message": "Video processed successfully",
+                "filename": os.path.basename(output_path),
+                "download_url": f"/download/{os.path.basename(output_path)}"
+            }
+        )
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/download/{filename}")

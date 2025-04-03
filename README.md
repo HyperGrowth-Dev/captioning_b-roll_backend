@@ -33,3 +33,35 @@ python main.py
 - `input/`: Place your input videos here
 - `output/`: Generated videos will be saved here
 - `temp/`: Temporary files during processing 
+
+## Possible Fonts
+
+"DancingScript-SemiBold" - Semi-bold weight of Dancing Script
+"Barlow-Bold" - Bold weight of Barlow
+"Barlow-BlackItalic" - Black weight with italic style of Barlow
+"Oswald-Regular" - Regular weight of Oswald
+"Oswald-SemiBold" - Semi-bold weight of Oswald
+"Montserrat-Bold" - Bold weight of Montserrat
+"Montserrat-SemiBoldItalic" - Semi-bold weight with italic style of Montserrat
+
+## Example Api Calls
+
+data = {
+    "font": "Montserrat-Bold",
+    "color": "yellow",
+    "font_size": 48
+}
+
+# Using hex color
+data = {
+    "font": "Montserrat-Bold",
+    "color": "#FF4500",  # Orange-red
+    "font_size": 48
+}
+
+# Using RGB
+data = {
+    "font": "Montserrat-Bold",
+    "color": "rgb(106, 155, 51)",  # Orange-red
+    "font_size": 44
+}
