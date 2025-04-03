@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useLocation } from 'react-router-dom';
 import { processVideo, downloadProcessedVideo } from '../services/videoService';
+import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 
 const fonts = [
   { 
@@ -108,6 +109,8 @@ function ProcessingPage() {
   const [isFontPanelOpen, setIsFontPanelOpen] = useState(true);
   const [isColorPanelOpen, setIsColorPanelOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
+  const [error, setError] = useState(null);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -152,15 +155,20 @@ function ProcessingPage() {
   const handleProcessVideo = async () => {
     try {
       setIsProcessing(true);
+      setError(null);
       const result = await processVideo(location.state.file, selectedFont, selectedColor);
       
       // Handle the processed video result
       if (result.processed_video) {
+        // Store the processed video URL for preview and download
+        setProcessedVideoUrl(result.processed_video);
+        
+        // Automatically download the processed video
         await downloadProcessedVideo(result.processed_video);
       }
     } catch (error) {
       console.error('Error processing video:', error);
-      // Handle error (show error message to user)
+      setError(error.message || 'Failed to process video');
     } finally {
       setIsProcessing(false);
     }
@@ -412,6 +420,41 @@ function ProcessingPage() {
                 >
                   {isProcessing ? 'Processing...' : 'Process Video'}
                 </motion.button>
+              )}
+            </AnimatePresence>
+            
+            {/* Download Button - Show after processing */}
+            <AnimatePresence mode="wait">
+              {processedVideoUrl && !isProcessing && (
+                <motion.button
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  onClick={() => downloadProcessedVideo(processedVideoUrl)}
+                  className="w-full p-6 rounded-xl cyber-border backdrop-blur-xl bg-green-600/30 hover:bg-green-500/40 
+                           transition-all duration-300 text-green-100 text-xl font-semibold flex items-center justify-center gap-2"
+                  whileHover={{ scale: 1.02 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                >
+                  <ArrowDownTrayIcon className="w-5 h-5" />
+                  Download Processed Video
+                </motion.button>
+              )}
+            </AnimatePresence>
+            
+            {/* Error Message */}
+            <AnimatePresence mode="wait">
+              {error && (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="p-4 bg-red-500/20 text-red-300 rounded-lg"
+                >
+                  {error}
+                </motion.div>
               )}
             </AnimatePresence>
           </motion.div>
