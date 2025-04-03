@@ -1,10 +1,20 @@
 /** @type {import('tailwindcss').Config} */
-module.exports = {
+export default {
   content: [
-    "./src/**/*.{js,jsx,ts,tsx}",
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      animation: {
+        'gradient': 'gradient 15s ease infinite',
+        'float': 'float 6s ease-in-out infinite',
+        'pulse': 'pulse 4s ease-in-out infinite',
+      },
+      backgroundImage: {
+        'cyber-gradient': 'linear-gradient(45deg, #7c3aed, #8b5cf6, #a78bfa)',
+      },
+    },
   },
   plugins: [],
-} 
+}

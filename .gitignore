@@ -36,6 +36,7 @@ ENV/
 output/
 uploads/
 temp/
+frontend/node_modules/
 *.log
 *.mp4
 *.wav
