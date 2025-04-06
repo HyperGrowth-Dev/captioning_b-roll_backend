@@ -94,7 +94,7 @@ class CaptionProcessor:
             print(f"Error processing audio: {e}")
             return None
 
-    def create_caption_clips(self, segments, video_width, font="Montserrat-Bold", color="white", font_size=48):
+    def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", color="white", font_size=48):
         """Create individual caption clips for each segment with custom font and color settings"""
         caption_clips = []
         
@@ -110,6 +110,12 @@ class CaptionProcessor:
             font_path = "/System/Library/Fonts/Helvetica.ttc"
             print(f"Falling back to: {font_path}")  # Debug print
         
+        # Calculate text positioning based on video dimensions
+        # Position text in the bottom third of the video
+        text_y_position = video_height * 0.7  # 70% from the top
+        max_text_width = video_width * 0.8  # 80% of video width
+        padding = 20  # Padding in pixels
+        
         for segment in segments:
             start_time = segment['start']
             end_time = segment['end']
@@ -118,11 +124,14 @@ class CaptionProcessor:
             if text:  # Only create clips for non-empty text
                 # Create text with custom settings
                 caption_clip = (TextClip(text.upper(),
-                                    font=font_path,  # Use the absolute path
+                                    font=font_path,
                                     fontsize=font_size,
-                                    color=color)
+                                    color=color,
+                                    size=(max_text_width, None),  # Set max width, height auto
+                                    method='caption',  # Enable word wrapping
+                                    align='center')  # Center align text
                             .set_duration(end_time - start_time)
-                            .set_position(('center', 550))
+                            .set_position(('center', text_y_position))
                             .set_start(start_time))
                 
                 caption_clips.append(caption_clip)

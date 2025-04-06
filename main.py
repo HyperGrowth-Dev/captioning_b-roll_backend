@@ -105,7 +105,8 @@ class VideoProcessor:
             # Create caption clips with custom settings
             caption_clips = self.caption_processor.create_caption_clips(
                 segments, 
-                video.w,
+                video.w,  # video width
+                video.h,  # video height
                 font=font,
                 color=color,
                 font_size=font_size
