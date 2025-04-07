@@ -60,16 +60,19 @@ class BrollAnalyzer:
         # Minimum time between b-roll suggestions (in seconds)
         self.min_time_between_suggestions = 5.0
 
-    def get_keywords_from_openai(self, text: str) -> List[Dict[str, float]]:
+    def get_keywords_from_openai(self, text: str, video_duration: float = None) -> List[Dict[str, float]]:
         """Use OpenAI to analyze text and suggest keywords for b-roll footage"""
         try:
+            duration_constraint = f"\nThe video is {video_duration:.2f} seconds long. Only suggest timestamps between 0 and {video_duration:.2f} seconds." if video_duration else ""
+            
             prompt = f"""Analyze this transcript and suggest specific keywords for finding relevant b-roll footage on Pexels.
+            The transcript includes timestamps in the format [start_time - end_time] before each segment.
             Consider the overall context and themes of the video.
             For each suggestion, provide:
             1. A specific, visual keyword good for finding stock footage
-            2. The timestamp where this b-roll would be most relevant
+            2. The timestamp where this b-roll would be most relevant (use the start time of the relevant segment)
             3. A confidence score (0-1) based on how well the keyword matches the context
-            4. A brief explanation of why this b-roll would work well at this point
+            4. A brief explanation of why this b-roll would work well at this point{duration_constraint}
             
             Format the response as a JSON array of objects, each with:
             - 'keyword': string
@@ -79,7 +82,8 @@ class BrollAnalyzer:
             
             Only respond with the JSON array, no other text.
             
-            Transcript to analyze: "{text}"
+            Transcript to analyze:
+            {text}
             """
             
             logger.debug(f"Sending transcript to OpenAI: {text}")
@@ -130,16 +134,24 @@ class BrollAnalyzer:
             logger.error(f"Error details: {traceback.format_exc()}")
             return []
 
-    def get_broll_suggestions(self, segments: List[Dict]) -> List[Dict]:
+    def get_broll_suggestions(self, segments: List[Dict], video_duration: float = None, video_width: int = None, video_height: int = None) -> List[Dict]:
         """Generate b-roll suggestions for the entire video transcript"""
         logger.info("Starting b-roll suggestions generation...")
         
-        # Combine all segments into a single transcript
-        transcript = " ".join(segment['text'] for segment in segments)
+        # Determine video orientation
+        is_vertical = video_height and video_width and video_height > video_width
+        orientation = "vertical" if is_vertical else "horizontal"
+        logger.info(f"Video orientation: {orientation} ({video_width}x{video_height})")
+        
+        # Combine all segments into a single transcript with timestamps
+        transcript = "\n".join([
+            f"[{segment['start']:.2f}s - {segment['end']:.2f}s] {segment['text']}"
+            for segment in segments
+        ])
         logger.info(f"Combined transcript length: {len(transcript)} characters")
         
         # Get keywords and timestamps from OpenAI
-        suggestions = self.get_keywords_from_openai(transcript)
+        suggestions = self.get_keywords_from_openai(transcript, video_duration)
         if not suggestions:
             logger.warning("No b-roll suggestions generated from transcript")
             return []
@@ -155,13 +167,24 @@ class BrollAnalyzer:
                 confidence = suggestion['confidence']
                 explanation = suggestion['explanation']
                 
+                # Skip if timestamp is beyond video duration
+                if video_duration and timestamp >= video_duration:
+                    logger.warning(f"Skipping suggestion at {timestamp:.2f}s as it's beyond video duration ({video_duration:.2f}s)")
+                    continue
+                
                 logger.info(f"Searching for b-roll at {timestamp:.2f}s with keyword: {keyword}")
-                broll_results = self.search_broll(keyword, 5.0)  # Default duration of 5 seconds
+                broll_results = self.search_broll(
+                    keyword, 
+                    5.0,  # Default duration of 5 seconds
+                    orientation=orientation,
+                    target_width=video_width,
+                    target_height=video_height
+                )
                 
                 if broll_results:
                     final_suggestion = {
                         'timestamp': timestamp,
-                        'duration': 5.0,  # Default duration
+                        'duration': 3.0,  # Fixed duration of 3 seconds
                         'keyword': keyword,
                         'confidence': confidence,
                         'context': explanation,
@@ -181,10 +204,10 @@ class BrollAnalyzer:
         logger.info(f"Successfully processed {len(final_suggestions)} b-roll suggestions")
         return final_suggestions
 
-    def search_broll(self, keyword: str, duration: float) -> List[Dict]:
+    def search_broll(self, keyword: str, duration: float, orientation: str = "horizontal", target_width: int = None, target_height: int = None) -> List[Dict]:
         """Search for b-roll footage using Pexels API"""
         try:
-            logger.info(f"Searching for b-roll with keyword: {keyword}")
+            logger.info(f"Searching for b-roll with keyword: {keyword} (orientation: {orientation})")
             
             # Search for videos
             logger.debug(f"Making Pexels API call with keyword: {keyword}")
@@ -194,7 +217,8 @@ class BrollAnalyzer:
                     f"{self.pexels_base_url}/search",
                     params={
                         "query": keyword,
-                        "per_page": 5
+                        "per_page": 15,  # Increased to get more options to filter
+                        "orientation": orientation
                     },
                     headers=headers
                 )
@@ -231,11 +255,32 @@ class BrollAnalyzer:
                     # Sort by quality and get the best one
                     video_file = sorted(video_files, key=lambda x: x.get('quality', 0), reverse=True)[0]
                     
+                    # Check if the video dimensions match our target orientation
+                    width = video_file.get('width', 0)
+                    height = video_file.get('height', 0)
+                    
+                    # Skip if dimensions don't match orientation
+                    if orientation == "vertical" and width > height:
+                        continue
+                    if orientation == "horizontal" and height > width:
+                        continue
+                    
+                    # If we have target dimensions, prefer videos closer to our target size
+                    if target_width and target_height:
+                        # Calculate aspect ratio difference
+                        target_ratio = target_width / target_height
+                        video_ratio = width / height
+                        ratio_diff = abs(target_ratio - video_ratio)
+                        
+                        # Skip if aspect ratio is too different
+                        if ratio_diff > 0.2:  # Allow 20% difference in aspect ratio
+                            continue
+                    
                     result = {
                         'url': video_file.get('link'),
                         'duration': video_file.get('duration'),
-                        'width': video_file.get('width'),
-                        'height': video_file.get('height'),
+                        'width': width,
+                        'height': height,
                         'quality': video_file.get('quality'),
                         'keyword': keyword
                     }
@@ -245,6 +290,10 @@ class BrollAnalyzer:
                     logger.error(f"Error processing video {i+1}: {str(e)}")
                     logger.error(f"Video processing error details: {traceback.format_exc()}")
                     continue
+            
+            # Sort results by how well they match our target dimensions
+            if target_width and target_height:
+                results.sort(key=lambda x: abs((x['width']/x['height']) - (target_width/target_height)))
             
             logger.info(f"Successfully processed {len(results)} videos for keyword: {keyword}")
             return results

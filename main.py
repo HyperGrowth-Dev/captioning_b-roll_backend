@@ -1,6 +1,9 @@
 import os
 from moviepy.video.io.VideoFileClip import VideoFileClip
 from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy.video.fx.all import resize, fadein, fadeout
+from moviepy.video.VideoClip import ColorClip
+import requests
 from dotenv import load_dotenv
 import tempfile
 import logging
@@ -70,22 +73,41 @@ class VideoProcessor:
         self.broll_analyzer = BrollAnalyzer(pexels_key)
         self.temp_manager = TempDirManager()
         logger.info("Initialized temporary directory manager")
-        
-    def extract_audio(self, video_path):
-        """Extract audio from video and save as WAV"""
+
+    def download_broll_video(self, url, temp_dir):
+        """Download b-roll video from URL"""
         try:
-            logger.info(f"Loading video file: {video_path}")
-            video = VideoFileClip(video_path)
-            audio = video.audio
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
             
-            # Create a temporary WAV file with specific parameters
-            temp_dir = self.temp_manager.create_temp_dir(prefix='audio_')
-            temp_audio = os.path.join(temp_dir, 'audio.wav')
-            logger.info(f"Extracting audio to: {temp_audio}")
-            audio.write_audiofile(temp_audio, fps=16000, nbytes=2, codec='pcm_s16le')
-            return temp_audio
+            # Create a temporary file for the video
+            temp_path = os.path.join(temp_dir, f'broll_{hash(url)}.mp4')
+            
+            with open(temp_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            
+            return temp_path
         except Exception as e:
-            logger.error(f"Error extracting audio: {str(e)}")
+            logger.error(f"Error downloading b-roll video: {str(e)}")
+            return None
+
+    def create_broll_clip(self, video_path, duration=5.0, transition_duration=0.2):
+        """Create a b-roll clip with transitions"""
+        try:
+            # Load the b-roll video
+            broll = VideoFileClip(video_path)
+            
+            # Trim to desired duration
+            broll = broll.subclip(0, min(duration, broll.duration))
+            
+            # Apply fade in/out transitions using the fx functions
+            broll = fadein(broll, transition_duration)
+            broll = fadeout(broll, transition_duration)
+            
+            return broll
+        except Exception as e:
+            logger.error(f"Error creating b-roll clip: {str(e)}")
             return None
 
     def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=48):
@@ -93,6 +115,8 @@ class VideoProcessor:
         try:
             # Load video
             video = VideoFileClip(input_path)
+            main_width, main_height = video.w, video.h
+            video_duration = video.duration
             
             # Extract audio
             audio = video.audio
@@ -105,15 +129,80 @@ class VideoProcessor:
             # Create caption clips with custom settings
             caption_clips = self.caption_processor.create_caption_clips(
                 segments, 
-                video.w,  # video width
-                video.h,  # video height
+                main_width,
+                main_height,
                 font=font,
                 color=color,
                 font_size=font_size
             )
             
-            # Combine video and captions
-            final_video = CompositeVideoClip([video] + caption_clips)
+            # Get b-roll suggestions from transcript segments
+            broll_suggestions = {
+                'broll_suggestions': self.broll_analyzer.get_broll_suggestions(
+                    segments, 
+                    video_duration,
+                    video_width=main_width,
+                    video_height=main_height
+                )
+            }
+            
+            # Save b-roll analysis in both formats
+            print_broll_analysis(broll_suggestions)  # Save as text file
+            self.broll_analyzer.save_analysis(broll_suggestions)  # Save as JSON
+            
+            # Create a temporary directory for b-roll videos
+            temp_dir = self.temp_manager.create_temp_dir(prefix='broll_')
+            
+            # Create clips list starting with main video
+            all_clips = [(video, 0)]  # Main video with z_index 0
+            
+            # Add b-roll clips at suggested timestamps
+            if broll_suggestions and 'broll_suggestions' in broll_suggestions:
+                for suggestion in broll_suggestions['broll_suggestions']:
+                    timestamp = suggestion['timestamp']
+                    duration = 3.0  # Fixed duration of 3 seconds
+                    
+                    # Skip if timestamp is beyond video duration
+                    if timestamp >= video_duration:
+                        logger.warning(f"Skipping b-roll at timestamp {timestamp}s as it's beyond video duration ({video_duration}s)")
+                        continue
+                    
+                    # Adjust duration if it would exceed video end
+                    if timestamp + duration > video_duration:
+                        duration = video_duration - timestamp
+                        logger.info(f"Adjusted b-roll duration to {duration}s to fit within video")
+                    
+                    # Download the first b-roll option
+                    if suggestion['broll_options']:
+                        broll_url = suggestion['broll_options'][0]['url']
+                        broll_path = self.download_broll_video(broll_url, temp_dir)
+                        
+                        if broll_path:
+                            # Create b-roll clip with transitions
+                            broll_clip = self.create_broll_clip(
+                                broll_path,
+                                duration=duration,
+                                transition_duration=0.2  # Quick transitions
+                            )
+                            
+                            if broll_clip:
+                                # Resize b-roll to match main video dimensions
+                                broll_clip = resize(broll_clip, width=main_width, height=main_height)
+                                
+                                # Set the start time for the b-roll clip
+                                broll_clip = broll_clip.set_start(timestamp)
+                                
+                                # Add b-roll clip to the list with z_index
+                                all_clips.append((broll_clip, 1))  # B-roll clip with z_index 1
+            
+            # Create the final composite video with z_index
+            final_video = CompositeVideoClip(
+                [clip for clip, _ in all_clips] + caption_clips,
+                size=(main_width, main_height)
+            )
+            
+            # Set the audio from the main video
+            final_video = final_video.set_audio(audio)
             
             # Save processed video
             output_path = os.path.join('output', 'processed_video.mp4')

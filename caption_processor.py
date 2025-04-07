@@ -158,6 +158,7 @@ class CaptionProcessor:
                     f.write("\n")
             
             print(f"Transcript saved to: {transcript_path}")
+            
             return transcript_path
         except Exception as e:
             print(f"Error saving transcript: {e}")
