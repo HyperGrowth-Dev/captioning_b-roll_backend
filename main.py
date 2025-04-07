@@ -92,7 +92,7 @@ class VideoProcessor:
             logger.error(f"Error downloading b-roll video: {str(e)}")
             return None
 
-    def create_broll_clip(self, video_path, duration=5.0, transition_duration=1.0):
+    def create_broll_clip(self, video_path, duration=5.0, transition_duration=0.2):
         """Create a b-roll clip with transitions"""
         try:
             # Load the b-roll video
@@ -101,15 +101,9 @@ class VideoProcessor:
             # Trim to desired duration
             broll = broll.subclip(0, min(duration, broll.duration))
             
-            # Create a mask for the transitions
-            mask = ColorClip(size=broll.size, color=(1,1,1))
-            mask = mask.set_duration(broll.duration)
-            
-            # Apply fade in/out to the mask
-            mask = mask.fadein(transition_duration).fadeout(transition_duration)
-            
-            # Apply the mask to the b-roll clip
-            broll = broll.set_mask(mask)
+            # Apply fade in/out transitions using the fx functions
+            broll = fadein(broll, transition_duration)
+            broll = fadeout(broll, transition_duration)
             
             return broll
         except Exception as e:
@@ -122,6 +116,7 @@ class VideoProcessor:
             # Load video
             video = VideoFileClip(input_path)
             main_width, main_height = video.w, video.h
+            video_duration = video.duration
             
             # Extract audio
             audio = video.audio
@@ -143,20 +138,39 @@ class VideoProcessor:
             
             # Get b-roll suggestions from transcript segments
             broll_suggestions = {
-                'broll_suggestions': self.broll_analyzer.get_broll_suggestions(segments)
+                'broll_suggestions': self.broll_analyzer.get_broll_suggestions(
+                    segments, 
+                    video_duration,
+                    video_width=main_width,
+                    video_height=main_height
+                )
             }
+            
+            # Save b-roll analysis in both formats
+            print_broll_analysis(broll_suggestions)  # Save as text file
+            self.broll_analyzer.save_analysis(broll_suggestions)  # Save as JSON
             
             # Create a temporary directory for b-roll videos
             temp_dir = self.temp_manager.create_temp_dir(prefix='broll_')
             
             # Create clips list starting with main video
-            all_clips = [video]
+            all_clips = [(video, 0)]  # Main video with z_index 0
             
             # Add b-roll clips at suggested timestamps
             if broll_suggestions and 'broll_suggestions' in broll_suggestions:
                 for suggestion in broll_suggestions['broll_suggestions']:
                     timestamp = suggestion['timestamp']
-                    duration = min(5.0, suggestion.get('duration', 5.0))  # Max 5 seconds
+                    duration = 3.0  # Fixed duration of 3 seconds
+                    
+                    # Skip if timestamp is beyond video duration
+                    if timestamp >= video_duration:
+                        logger.warning(f"Skipping b-roll at timestamp {timestamp}s as it's beyond video duration ({video_duration}s)")
+                        continue
+                    
+                    # Adjust duration if it would exceed video end
+                    if timestamp + duration > video_duration:
+                        duration = video_duration - timestamp
+                        logger.info(f"Adjusted b-roll duration to {duration}s to fit within video")
                     
                     # Download the first b-roll option
                     if suggestion['broll_options']:
@@ -168,31 +182,24 @@ class VideoProcessor:
                             broll_clip = self.create_broll_clip(
                                 broll_path,
                                 duration=duration,
-                                transition_duration=1.0
+                                transition_duration=0.2  # Quick transitions
                             )
                             
                             if broll_clip:
                                 # Resize b-roll to match main video dimensions
                                 broll_clip = resize(broll_clip, width=main_width, height=main_height)
                                 
-                                # Create a mask for the main video at this timestamp
-                                main_mask = ColorClip(size=(main_width, main_height), color=(1,1,1))
-                                main_mask = main_mask.set_duration(duration)
-                                main_mask = main_mask.fadeout(1.0).fadein(1.0)
-                                
-                                # Apply the mask to the main video segment
-                                main_segment = video.subclip(timestamp, timestamp + duration)
-                                main_segment = main_segment.set_mask(main_mask)
-                                
-                                # Set the start time for both clips
+                                # Set the start time for the b-roll clip
                                 broll_clip = broll_clip.set_start(timestamp)
-                                main_segment = main_segment.set_start(timestamp)
                                 
-                                # Add both clips to the list
-                                all_clips.extend([main_segment, broll_clip])
+                                # Add b-roll clip to the list with z_index
+                                all_clips.append((broll_clip, 1))  # B-roll clip with z_index 1
             
-            # Combine all clips (main video, b-rolls, and captions)
-            final_video = CompositeVideoClip(all_clips + caption_clips)
+            # Create the final composite video with z_index
+            final_video = CompositeVideoClip(
+                [clip for clip, _ in all_clips] + caption_clips,
+                size=(main_width, main_height)
+            )
             
             # Set the audio from the main video
             final_video = final_video.set_audio(audio)
