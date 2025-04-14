@@ -1,8 +1,6 @@
 import os
-from moviepy.video.io.VideoFileClip import VideoFileClip
-from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
 from moviepy.video.fx.all import resize, fadein, fadeout
-from moviepy.video.VideoClip import ColorClip
 import requests
 from dotenv import load_dotenv
 import tempfile
@@ -11,6 +9,8 @@ from caption_processor import CaptionProcessor
 from broll_analyzer import BrollAnalyzer
 from utils import setup_logging, ensure_directory, TempDirManager
 import traceback
+from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 # Load environment variables
 load_dotenv()
@@ -239,3 +239,43 @@ def main():
 
 if __name__ == "__main__":
     main() 
+
+def resize(clip, width=None, height=None, newsize=None):
+    """Resize a video clip while maintaining aspect ratio"""
+    if newsize is not None:
+        target_width, target_height = newsize
+    else:
+        target_width, target_height = width, height
+    
+    def resizer(pic, target_size):
+        pilim = Image.fromarray(pic)
+        original_width, original_height = pilim.size
+        
+        # Calculate aspect ratios
+        target_ratio = target_width / target_height
+        original_ratio = original_width / original_height
+        
+        # Calculate new dimensions while maintaining aspect ratio
+        if original_ratio > target_ratio:
+            # Image is wider than target
+            new_width = target_width
+            new_height = int(target_width / original_ratio)
+        else:
+            # Image is taller than target
+            new_height = target_height
+            new_width = int(target_height * original_ratio)
+        
+        # Resize the image
+        resized_pil = pilim.resize((new_width, new_height), Image.LANCZOS)
+        
+        # Create a new image with the target size and paste the resized image in the center
+        new_im = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+        paste_x = (target_width - new_width) // 2
+        paste_y = (target_height - new_height) // 2
+        new_im.paste(resized_pil, (paste_x, paste_y))
+        
+        return np.array(new_im)
+    
+    fl = lambda pic: resizer(pic.astype('uint8'), (target_width, target_height))
+    newclip = clip.fl_image(fl)
+    return newclip 

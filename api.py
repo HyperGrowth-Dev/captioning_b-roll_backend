@@ -10,6 +10,9 @@ from utils import setup_logging, ensure_directory
 from datetime import datetime
 import traceback
 import time
+from services.s3_service import S3Service
+import uuid
+import logging
 
 # Initialize logger
 logger = setup_logging('api', 'api.log')
@@ -41,7 +44,9 @@ except Exception as e:
     logger.error(f"Failed to initialize VideoProcessor: {str(e)}")
     raise
 
-@app.get("/")
+s3_service = S3Service()
+
+@app.get("/api/")
 async def root():
     """Root endpoint that returns API information"""
     return {
@@ -52,12 +57,12 @@ async def root():
             "/health": "Check API health status",
             "/docs": "API documentation (Swagger UI)",
             "/redoc": "API documentation (ReDoc)",
-            "/process-video": "Upload and process a video",
-            "/download/{filename}": "Download a processed video"
+            "/api/process-video": "Upload and process a video",
+            "/api/download/{filename}": "Download a processed video"
         }
     }
 
-@app.post("/process-video")
+@app.post("/api/process-video")
 async def process_video(
     file: UploadFile = File(...),
     font: str = Form("Montserrat-Bold"),  # Default font
@@ -92,14 +97,14 @@ async def process_video(
             content={
                 "message": "Video processed successfully",
                 "filename": os.path.basename(output_path),
-                "download_url": f"/download/{os.path.basename(output_path)}"
+                "download_url": f"/api/download/{os.path.basename(output_path)}"
             }
         )
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/download/{filename}")
+@app.get("/api/download/{filename}")
 async def download_video(filename: str):
     """Download a processed video file"""
     file_path = os.path.join('output', filename)
@@ -126,7 +131,7 @@ async def download_video(filename: str):
         }
     )
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     """Check if the API is healthy and all services are available"""
     try:
@@ -151,6 +156,97 @@ async def health_check():
             status_code=503,
             content={"status": "unhealthy", "error": str(e)}
         )
+
+@app.post("/api/get-upload-url")
+async def get_upload_url():
+    """Generate a pre-signed URL for uploading a video to S3"""
+    try:
+        logger.info("Generating upload URL")
+        
+        # Generate a unique key for the upload
+        upload_key = f"uploads/{uuid.uuid4()}.mp4"
+        logger.info(f"Generated upload key: {upload_key}")
+        
+        # Generate pre-signed URL
+        upload_url = s3_service.generate_presigned_url(upload_key, "put")
+        logger.info("Successfully generated upload URL")
+        
+        return {
+            "upload_url": upload_url,
+            "key": upload_key
+        }
+    except Exception as e:
+        logger.error(f"Error generating upload URL: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate upload URL: {str(e)}"
+        )
+
+@app.post("/api/process")
+async def process_video_s3(
+    input_key: str = Form(...),
+    font: str = Form(...),
+    color: str = Form(...),
+    font_size: int = Form(24)
+):
+    """Process a video from S3 with the given options"""
+    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}")
+    
+    try:
+        # Generate a unique output key
+        process_id = str(uuid.uuid4())
+        output_key = f"processed/{process_id}/video.mp4"
+        logger.info(f"Generated output key: {output_key}")
+        
+        # Download the video from S3
+        local_input_path = f"/tmp/{uuid.uuid4()}.mp4"
+        logger.info(f"Downloading video from S3 to {local_input_path}")
+        await s3_service.download_file(input_key, local_input_path)
+        
+        # Process the video
+        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}")
+        
+        # Create VideoProcessor instance and process the video
+        processor = VideoProcessor()
+        output_path = processor.process_video(
+            local_input_path,
+            font=font,
+            color=color,
+            font_size=font_size
+        )
+        
+        # Upload the processed video to S3
+        logger.info(f"Uploading processed video to S3 with key: {output_key}")
+        await s3_service.upload_file(output_path, output_key)
+        
+        # Clean up local files
+        logger.info("Cleaning up temporary files")
+        os.remove(local_input_path)
+        os.remove(output_path)
+        
+        logger.info("Video processing completed successfully")
+        return {
+            "status": "success",
+            "output_key": output_key
+        }
+    except Exception as e:
+        logger.error(f"Error processing video: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/get-download-url/{key}")
+async def get_download_url(key: str):
+    """Generate a pre-signed URL for downloading a processed video"""
+    try:
+        if not s3_service.file_exists(key):
+            raise HTTPException(status_code=404, detail="File not found")
+        
+        url = s3_service.generate_download_url(key)
+        return {"download_url": url}
+    except Exception as e:
+        logger.error(f"Error generating download URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn

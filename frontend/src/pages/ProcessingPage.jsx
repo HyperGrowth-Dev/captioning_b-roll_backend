@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
-import { useLocation } from 'react-router-dom';
-import { processVideo, downloadProcessedVideo } from '../services/videoService';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { uploadVideo, processVideo, downloadProcessedVideo } from '../services/videoService';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSpinner } from '@fortawesome/free-solid-svg-icons';
 
 const fonts = [
   { 
@@ -103,6 +105,8 @@ const colors = [
 
 function ProcessingPage() {
   const location = useLocation();
+  const navigate = useNavigate();
+  const [selectedFile, setSelectedFile] = useState(location.state?.file || null);
   const [selectedFont, setSelectedFont] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
@@ -111,10 +115,11 @@ function ProcessingPage() {
   const [isColorPanelOpen, setIsColorPanelOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
-  const [error, setError] = useState(null);
+  const [processingError, setProcessingError] = useState(null);
   const [showProcessedVideo, setShowProcessedVideo] = useState(false);
   const videoRef = useRef(null);
 
+  // Set video URL when file is received
   useEffect(() => {
     if (location.state?.file) {
       const url = URL.createObjectURL(location.state.file);
@@ -122,6 +127,14 @@ function ProcessingPage() {
       return () => URL.revokeObjectURL(url);
     }
   }, [location.state]);
+
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedFile(file);
+      setProcessingError(null);
+    }
+  };
 
   const handleVideoLoad = () => {
     if (videoRef.current) {
@@ -155,29 +168,67 @@ function ProcessingPage() {
   };
 
   const handleProcessVideo = async () => {
+    // Add detailed logging
+    console.log('=== Processing Video State ===');
+    console.log('Selected File:', selectedFile);
+    console.log('Selected Font:', selectedFont);
+    console.log('Selected Color:', selectedColor);
+    console.log('Processing Options:', {
+      font: selectedFont?.family,
+      color: selectedColor?.value,
+      font_size: 24
+    });
+
+    if (!selectedFile || !selectedFont || !selectedColor) {
+      console.error('Missing required selections:', {
+        hasFile: !!selectedFile,
+        hasFont: !!selectedFont,
+        hasColor: !!selectedColor
+      });
+      setProcessingError('Please select a file, font, and color');
+      return;
+    }
+
     try {
-      console.log('=== STARTING VIDEO PROCESSING ===');
       setIsProcessing(true);
-      setError(null);
-      console.log('Selected font:', selectedFont);
-      console.log('Selected color:', selectedColor);
-      console.log('Video file:', location.state.file);
-      
-      const result = await processVideo(location.state.file, selectedFont, selectedColor);
-      console.log('=== PROCESSING RESULT ===', result);
-      
-      if (result.filename) {
-        console.log('=== GETTING PROCESSED VIDEO URL ===');
-        const processedUrl = await downloadProcessedVideo(result.filename);
-        console.log('=== PROCESSED VIDEO URL CREATED ===', processedUrl);
-        setProcessedVideoUrl(processedUrl);
-        setShowProcessedVideo(true);
-      } else {
-        console.log('=== NO FILENAME IN RESULT ===');
-      }
+      setProcessingError(null);
+      setProcessedVideoUrl(null);
+      setShowProcessedVideo(false);
+
+      // Step 1: Upload video to S3
+      console.log('Starting video upload...');
+      const { key: inputKey } = await uploadVideo(selectedFile);
+      console.log('Video uploaded successfully with key:', inputKey);
+
+      // Step 2: Process video
+      console.log('Starting video processing with options:', {
+        input_key: inputKey,
+        font: selectedFont.family,
+        color: selectedColor.value,
+        font_size: 24
+      });
+      const processData = await processVideo(inputKey, {
+        font: selectedFont.family,
+        color: selectedColor.value,
+        font_size: 24
+      });
+      console.log('Video processed successfully:', processData);
+
+      // Step 3: Get download URL
+      console.log('Getting download URL for key:', processData.output_key);
+      const downloadUrl = await downloadProcessedVideo(processData.output_key);
+      console.log('Download URL received:', downloadUrl);
+
+      // Navigate to results page with the download URL
+      navigate('/results', { state: { downloadUrl } });
     } catch (error) {
-      console.error('=== ERROR PROCESSING VIDEO ===', error);
-      setError(error.message || 'Failed to process video');
+      console.error('Error processing video:', error);
+      console.error('Error details:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      setProcessingError(error.response?.data?.detail || error.message || 'Failed to process video');
     } finally {
       setIsProcessing(false);
     }
@@ -472,14 +523,21 @@ function ProcessingPage() {
                   whileHover={{ scale: isProcessing ? 1 : 1.02 }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
                 >
-                  {isProcessing ? 'Processing...' : 'Process Video'}
+                  {isProcessing ? (
+                    <>
+                      <FontAwesomeIcon icon={faSpinner} className="animate-spin mr-2" />
+                      Processing...
+                    </>
+                  ) : (
+                    'Process Video'
+                  )}
                 </motion.button>
               )}
             </AnimatePresence>
             
             {/* Error Message */}
             <AnimatePresence mode="wait">
-              {error && (
+              {processingError && (
                 <motion.div
                   layout
                   initial={{ opacity: 0, height: 0 }}
@@ -487,13 +545,22 @@ function ProcessingPage() {
                   exit={{ opacity: 0, height: 0 }}
                   className="p-4 bg-red-500/20 text-red-300 rounded-lg"
                 >
-                  {error}
+                  {typeof processingError === 'string' ? processingError : 
+                   processingError?.message || processingError?.detail || 'An error occurred'}
                 </motion.div>
               )}
             </AnimatePresence>
           </motion.div>
         </LayoutGroup>
       </div>
+
+      {/* Error Display */}
+      {processingError && (
+        <div className="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg">
+          {typeof processingError === 'string' ? processingError : 
+           processingError?.message || processingError?.detail || 'An error occurred'}
+        </div>
+      )}
     </div>
   );
 }

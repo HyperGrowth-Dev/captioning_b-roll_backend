@@ -1,47 +1,57 @@
 import axios from 'axios';
 
-const API_URL = 'http://localhost:8000';
+// Use import.meta.env for Vite environment variables
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export const processVideo = async (file, font, color) => {
+export const uploadVideo = async (file) => {
   try {
-    console.log('=== VIDEO SERVICE: STARTING PROCESS ===');
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('font', font.family);
-    formData.append('color', color.value);
-
-    console.log('=== VIDEO SERVICE: SENDING REQUEST ===');
-    const response = await axios.post(`${API_URL}/process-video`, formData, {
+    // Get upload URL from backend
+    const { data: { upload_url, key } } = await axios.post(`${API_URL}/get-upload-url`);
+    
+    // Upload directly to S3
+    await axios.put(upload_url, file, {
       headers: {
-        'Content-Type': 'multipart/form-data',
+        'Content-Type': 'video/mp4',
       },
       onUploadProgress: (progressEvent) => {
         const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-        console.log(`=== UPLOAD PROGRESS === ${percentCompleted}%`);
+        console.log(`Upload progress: ${percentCompleted}%`);
       },
     });
-
-    console.log('=== VIDEO SERVICE: PROCESSING RESPONSE ===', response.data);
-    return response.data;
+    
+    return { key };
   } catch (error) {
-    console.error('=== VIDEO SERVICE: ERROR ===', error);
+    console.error('Error uploading video:', error);
     throw error;
   }
 };
 
-export const downloadProcessedVideo = async (filename) => {
+export const processVideo = async (inputKey, options) => {
   try {
-    console.log('=== VIDEO SERVICE: STARTING DOWNLOAD ===', filename);
-    const response = await axios.get(`${API_URL}/download/${filename}`, {
-      responseType: 'blob',
+    const formData = new FormData();
+    formData.append('input_key', inputKey);
+    formData.append('font', options.font);
+    formData.append('color', options.color);
+    formData.append('font_size', options.font_size);
+
+    const { data } = await axios.post(`${API_URL}/process`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
     });
-    
-    console.log('=== VIDEO SERVICE: BLOB RECEIVED ===', response.data);
-    const url = window.URL.createObjectURL(new Blob([response.data], { type: 'video/mp4' }));
-    console.log('=== VIDEO SERVICE: BLOB URL CREATED ===', url);
-    return url;
+    return data;
   } catch (error) {
-    console.error('=== VIDEO SERVICE: DOWNLOAD ERROR ===', error);
+    console.error('Error processing video:', error);
+    throw error;
+  }
+};
+
+export const downloadProcessedVideo = async (outputKey) => {
+  try {
+    const { data: { download_url } } = await axios.get(`${API_URL}/download/${outputKey}`);
+    return download_url;
+  } catch (error) {
+    console.error('Error getting download URL:', error);
     throw error;
   }
 };
