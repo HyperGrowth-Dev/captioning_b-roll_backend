@@ -147,7 +147,7 @@ class VideoProcessor:
             }
             
             # Save b-roll analysis in both formats
-            print_broll_analysis(broll_suggestions)  # Save as text file
+            #print_broll_analysis(broll_suggestions)  # Save as text file
             self.broll_analyzer.save_analysis(broll_suggestions)  # Save as JSON
             
             # Create a temporary directory for b-roll videos

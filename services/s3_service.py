@@ -45,6 +45,15 @@ class S3Service:
     def generate_presigned_url(self, key: str, operation: str, expiration: int = 3600):
         """Generate a presigned URL for upload or download"""
         try:
+            # For get operations, verify the file exists first
+            if operation == 'get':
+                try:
+                    self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+                except ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        raise HTTPException(status_code=404, detail="File not found in S3")
+                    raise
+
             url = self.s3_client.generate_presigned_url(
                 ClientMethod=f'{operation}_object',
                 Params={
@@ -53,7 +62,10 @@ class S3Service:
                 },
                 ExpiresIn=expiration
             )
+            logger.info(f"Generated presigned URL for {operation} operation on key: {key}")
             return url
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"Error generating presigned URL: {str(e)}")
             raise HTTPException(status_code=500, detail=str(e))

@@ -13,9 +13,16 @@ import time
 from services.s3_service import S3Service
 import uuid
 import logging
+from botocore.exceptions import ClientError
+import asyncio
+import boto3
 
-# Initialize logger
-logger = setup_logging('api', 'api.log')
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Video Caption and B-Roll API",
@@ -196,7 +203,7 @@ async def process_video_s3(
     try:
         # Generate a unique output key
         process_id = str(uuid.uuid4())
-        output_key = f"processed/{process_id}/video.mp4"
+        output_key = f"processed/{process_id}.mp4"
         logger.info(f"Generated output key: {output_key}")
         
         # Download the video from S3
@@ -220,6 +227,12 @@ async def process_video_s3(
         logger.info(f"Uploading processed video to S3 with key: {output_key}")
         await s3_service.upload_file(output_path, output_key)
         
+        # Verify the file exists
+        if not s3_service.file_exists(output_key):
+            logger.error(f"Failed to verify uploaded file in S3: {output_key}")
+            raise HTTPException(status_code=500, detail="Failed to verify uploaded file in S3")
+        logger.info(f"Successfully verified file in S3: {output_key}")
+        
         # Clean up local files
         logger.info("Cleaning up temporary files")
         os.remove(local_input_path)
@@ -235,17 +248,114 @@ async def process_video_s3(
         logger.error(f"Stack trace: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/get-download-url/{key}")
+@app.get("/api/get-download-url/{key:path}")
 async def get_download_url(key: str):
-    """Generate a pre-signed URL for downloading a processed video"""
+    """Get a pre-signed URL for downloading a processed video"""
+    logger.info(f"Received download URL request for key: {key}")
     try:
-        if not s3_service.file_exists(key):
-            raise HTTPException(status_code=404, detail="File not found")
-        
-        url = s3_service.generate_download_url(key)
-        return {"download_url": url}
+        # List contents of the directory to help debug
+        directory = '/'.join(key.split('/')[:-1])
+        logger.info(f"Listing contents of directory: {directory}")
+        try:
+            response = s3_service.s3_client.list_objects_v2(
+                Bucket=s3_service.bucket_name,
+                Prefix=directory
+            )
+            if 'Contents' in response:
+                logger.info(f"Found files: {[obj['Key'] for obj in response['Contents']]}")
+            else:
+                logger.warning(f"No files found in directory: {directory}")
+        except Exception as e:
+            logger.error(f"Error listing directory contents: {str(e)}")
+
+        # Try to get the download URL
+        try:
+            url = s3_service.generate_presigned_url(key, 'get')
+            logger.info(f"Successfully generated download URL for key: {key}")
+            return {"download_url": url}
+        except HTTPException as e:
+            if e.status_code == 404:
+                logger.error(f"File not found in S3: {key}")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"File not found in S3. Please check if the file exists at: {key}"
+                )
+            raise
     except Exception as e:
-        logger.error(f"Error generating download URL: {str(e)}")
+        logger.error(f"Error getting download URL: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/test-s3-permissions")
+async def test_s3_permissions():
+    """Test S3 permissions"""
+    try:
+        results = {
+            "bucket_exists": False,
+            "can_list": False,
+            "can_get": False,
+            "can_put": False,
+            "errors": []
+        }
+        
+        # Test if bucket exists
+        try:
+            s3_service.s3_client.head_bucket(Bucket=s3_service.bucket_name)
+            results["bucket_exists"] = True
+        except Exception as e:
+            results["errors"].append(f"Bucket check error: {str(e)}")
+        
+        # Test list operation
+        try:
+            s3_service.s3_client.list_objects_v2(
+                Bucket=s3_service.bucket_name,
+                MaxKeys=1
+            )
+            results["can_list"] = True
+        except Exception as e:
+            results["errors"].append(f"List error: {str(e)}")
+        
+        # Test put operation
+        test_key = "test-permissions/test.txt"
+        try:
+            s3_service.s3_client.put_object(
+                Bucket=s3_service.bucket_name,
+                Key=test_key,
+                Body="test"
+            )
+            results["can_put"] = True
+            
+            # Test get operation
+            try:
+                s3_service.s3_client.get_object(
+                    Bucket=s3_service.bucket_name,
+                    Key=test_key
+                )
+                results["can_get"] = True
+            except Exception as e:
+                results["errors"].append(f"Get error: {str(e)}")
+                
+            # Clean up
+            s3_service.s3_client.delete_object(
+                Bucket=s3_service.bucket_name,
+                Key=test_key
+            )
+        except Exception as e:
+            results["errors"].append(f"Put error: {str(e)}")
+        
+        return results
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/check-file/{key}")
+async def check_file(key: str):
+    """Check if a file exists in S3"""
+    try:
+        logger.info(f"Checking if file exists: {key}")
+        exists = s3_service.file_exists(key)
+        logger.info(f"File exists check result: {exists}")
+        return {"exists": exists}
+    except Exception as e:
+        logger.error(f"Error checking file: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

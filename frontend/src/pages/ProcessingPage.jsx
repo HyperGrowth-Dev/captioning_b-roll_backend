@@ -117,6 +117,7 @@ function ProcessingPage() {
   const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
   const [processingError, setProcessingError] = useState(null);
   const [showProcessedVideo, setShowProcessedVideo] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState('');
   const videoRef = useRef(null);
 
   // Set video URL when file is received
@@ -168,27 +169,6 @@ function ProcessingPage() {
   };
 
   const handleProcessVideo = async () => {
-    // Add detailed logging
-    console.log('=== Processing Video State ===');
-    console.log('Selected File:', selectedFile);
-    console.log('Selected Font:', selectedFont);
-    console.log('Selected Color:', selectedColor);
-    console.log('Processing Options:', {
-      font: selectedFont?.family,
-      color: selectedColor?.value,
-      font_size: 24
-    });
-
-    if (!selectedFile || !selectedFont || !selectedColor) {
-      console.error('Missing required selections:', {
-        hasFile: !!selectedFile,
-        hasFont: !!selectedFont,
-        hasColor: !!selectedColor
-      });
-      setProcessingError('Please select a file, font, and color');
-      return;
-    }
-
     try {
       setIsProcessing(true);
       setProcessingError(null);
@@ -201,36 +181,28 @@ function ProcessingPage() {
       console.log('Video uploaded successfully with key:', inputKey);
 
       // Step 2: Process video
-      console.log('Starting video processing with options:', {
-        input_key: inputKey,
-        font: selectedFont.family,
-        color: selectedColor.value,
-        font_size: 24
-      });
+      console.log('Starting video processing...');
       const processData = await processVideo(inputKey, {
         font: selectedFont.family,
         color: selectedColor.value,
         font_size: 24
       });
-      console.log('Video processed successfully:', processData);
+      console.log('Video processing initiated:', processData);
 
-      // Step 3: Get download URL
-      console.log('Getting download URL for key:', processData.output_key);
+      // Step 3: Poll for processed video
+      console.log('Waiting for processed video...');
+      setProcessingStatus('Waiting for video to be ready...');
       const downloadUrl = await downloadProcessedVideo(processData.output_key);
-      console.log('Download URL received:', downloadUrl);
+      console.log('Successfully got download URL:', downloadUrl);
 
-      // Navigate to results page with the download URL
+      // Navigate to results
       navigate('/results', { state: { downloadUrl } });
     } catch (error) {
       console.error('Error processing video:', error);
-      console.error('Error details:', {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status
-      });
-      setProcessingError(error.response?.data?.detail || error.message || 'Failed to process video');
+      setProcessingError(error.message || 'Failed to process video');
     } finally {
       setIsProcessing(false);
+      setProcessingStatus('');
     }
   };
 
