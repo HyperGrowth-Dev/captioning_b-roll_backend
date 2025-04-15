@@ -141,6 +141,7 @@ function ProcessingPage() {
   const [selectedFont, setSelectedFont] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedFontSize, setSelectedFontSize] = useState(null);
+  const [previewText, setPreviewText] = useState("YOUR CAPTION TEXT");
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoAspectRatio, setVideoAspectRatio] = useState(16/9);
   const [isFontPanelOpen, setIsFontPanelOpen] = useState(true);
@@ -161,6 +162,14 @@ function ProcessingPage() {
       return () => URL.revokeObjectURL(url);
     }
   }, [location.state]);
+
+  // Add debug logging for state changes
+  useEffect(() => {
+    console.log('=== CAPTION STATE UPDATE ===');
+    console.log('Selected Font:', selectedFont?.name);
+    console.log('Selected Color:', selectedColor?.value);
+    console.log('Selected Font Size:', selectedFontSize?.value);
+  }, [selectedFont, selectedColor, selectedFontSize]);
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -274,9 +283,9 @@ function ProcessingPage() {
   return (
     <div className="min-h-screen flex flex-col lg:flex-row">
       {/* Video Preview Section */}
-      <div className="w-full lg:w-1/2 h-auto lg:h-screen bg-purple-950/50 p-2 sm:p-4 flex items-center justify-center">
+      <div className="w-full lg:w-1/2 h-auto lg:h-screen bg-purple-950/50 p-2 sm:p-4 flex flex-col items-center justify-center">
+        {/* Video Preview */}
         <div className="w-full max-w-[280px] sm:max-w-[320px] md:max-w-[360px] mx-auto flex flex-col items-center justify-center space-y-2">
-          {/* Video Preview */}
           <div 
             className="relative w-full rounded-xl overflow-hidden cyber-border bg-white"
             style={{
@@ -286,19 +295,73 @@ function ProcessingPage() {
             }}
           >
             {videoUrl ? (
-              <video
-                ref={videoRef}
-                src={showProcessedVideo ? processedVideoUrl : videoUrl}
-                className="absolute inset-0 w-full h-full object-contain"
-                autoPlay
-                loop
-                muted
-                playsInline
-                onLoadedMetadata={handleVideoLoad}
-                onError={(e) => console.error('=== VIDEO ERROR ===', e)}
-                onLoadStart={() => console.log('=== VIDEO LOAD STARTED ===')}
-                onLoadedData={() => console.log('=== VIDEO DATA LOADED ===')}
-              />
+              <>
+                <video
+                  ref={videoRef}
+                  src={showProcessedVideo ? processedVideoUrl : videoUrl}
+                  className="absolute inset-0 w-full h-full object-contain"
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  onLoadedMetadata={handleVideoLoad}
+                  onError={(e) => console.error('=== VIDEO ERROR ===', e)}
+                  onLoadStart={() => console.log('=== VIDEO LOAD STARTED ===')}
+                  onLoadedData={() => console.log('=== VIDEO DATA LOADED ===')}
+                />
+                
+                {/* Caption Preview Overlay */}
+                {selectedFont && !isProcessing && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+                    {/* Black outline effect */}
+                    {[...Array(8)].map((_, index) => {
+                      const angle = (index * Math.PI) / 4;
+                      const offsetX = Math.cos(angle) * 2;
+                      const offsetY = Math.sin(angle) * 2;
+                      return (
+                        <div
+                          key={index}
+                          className="absolute inset-0 flex items-center justify-center"
+                          style={{
+                            transform: `translate(${offsetX}px, ${offsetY}px)`,
+                          }}
+                        >
+                          <span
+                            style={{
+                              ...selectedFont.previewStyle,
+                              fontSize: `${selectedFontSize?.value || 32}px`,
+                              color: 'black',
+                              textAlign: 'center',
+                              maxWidth: '90%',
+                              textShadow: '0px 0px 1px black',
+                              whiteSpace: 'nowrap',
+                              display: 'block',
+                            }}
+                          >
+                            Caption Text
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {/* Main text */}
+                    <span
+                      className="relative"
+                      style={{
+                        ...selectedFont.previewStyle,
+                        fontSize: `${selectedFontSize?.value || 32}px`,
+                        color: selectedColor?.value || 'white',
+                        textAlign: 'center',
+                        maxWidth: '90%',
+                        textShadow: '0px 0px 1px rgba(0,0,0,0.5)',
+                        whiteSpace: 'nowrap',
+                        display: 'block',
+                      }}
+                    >
+                      Caption Text
+                    </span>
+                  </div>
+                )}
+              </>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
                 <div className="text-purple-200/50 text-lg">Video not found</div>
@@ -584,17 +647,21 @@ function ProcessingPage() {
                           <motion.div layout className="bg-white p-2 sm:p-3">
                             <motion.div 
                               layout 
-                              className="min-h-[40px] sm:min-h-[48px] flex items-center justify-center"
+                              className="flex items-center justify-center"
+                              style={{
+                                height: `${Math.max(size.value + 24, 64)}px`
+                              }}
                             >
                               <motion.span 
                                 layout 
-                                className="block text-sm sm:text-base text-black text-center" 
+                                className="block text-black text-center" 
                                 style={{
                                   ...selectedFont?.previewStyle,
-                                  ...size.previewStyle
+                                  fontSize: `${size.value}px`,
+                                  lineHeight: 1
                                 }}
                               >
-                                Caption Text
+                                Text
                               </motion.span>
                             </motion.div>
                             <motion.div layout className="flex justify-between items-center mt-1">

@@ -2,6 +2,7 @@ import whisper
 from moviepy.video.VideoClip import TextClip
 import logging
 import os
+import numpy as np
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -114,7 +115,7 @@ class CaptionProcessor:
         # Position text in the bottom third of the video
         text_y_position = video_height * 0.7  # 70% from the top
         max_text_width = video_width * 0.8  # 80% of video width
-        padding = 20  # Padding in pixels
+        padding = 20
         
         for segment in segments:
             start_time = segment['start']
@@ -122,19 +123,19 @@ class CaptionProcessor:
             text = segment['text'].strip()
             
             if text:  # Only create clips for non-empty text
-                # Create text with custom settings
-                caption_clip = (TextClip(text.upper(),
+                # Remove stroke/outline effect. Only create the main text clip.
+                main_clip = (TextClip(text.upper(),
                                     font=font_path,
                                     fontsize=font_size,
                                     color=color,
-                                    size=(max_text_width, None),  # Set max width, height auto
-                                    method='caption',  # Enable word wrapping
-                                    align='center')  # Center align text
+                                    size=(max_text_width, None),
+                                    method='caption',
+                                    align='center')
                             .set_duration(end_time - start_time)
                             .set_position(('center', text_y_position))
                             .set_start(start_time))
                 
-                caption_clips.append(caption_clip)
+                caption_clips.append(main_clip)
         
         return caption_clips
 
