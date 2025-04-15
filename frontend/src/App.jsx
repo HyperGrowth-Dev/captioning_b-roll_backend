@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-route
 import { CloudArrowUpIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import ProcessingPage from './pages/ProcessingPage';
+import ResultsPage from './pages/ResultsPage';
 
 function UploadPage() {
   const navigate = useNavigate();
@@ -112,6 +113,7 @@ function App() {
       <Routes>
         <Route path="/" element={<UploadPage />} />
         <Route path="/processing" element={<ProcessingPage />} />
+        <Route path="/results" element={<ResultsPage />} />
       </Routes>
     </Router>
   );
