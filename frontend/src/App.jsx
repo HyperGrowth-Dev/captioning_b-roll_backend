@@ -26,6 +26,7 @@ function UploadPage() {
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile && droppedFile.type.startsWith('video/')) {
       setFile(droppedFile);
+      navigate('/processing', { state: { file: droppedFile } });
     } else {
       alert('Please upload a video file');
     }
@@ -35,6 +36,7 @@ function UploadPage() {
     const selectedFile = e.target.files[0];
     if (selectedFile && selectedFile.type.startsWith('video/')) {
       setFile(selectedFile);
+      navigate('/processing', { state: { file: selectedFile } });
     } else {
       alert('Please upload a video file');
     }
