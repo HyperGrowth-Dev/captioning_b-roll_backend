@@ -51,11 +51,11 @@ function ResultsPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-900 to-black p-8">
-      <h1 className="text-4xl font-bold text-white mb-8">Your Processed Video</h1>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-900 to-black p-2 sm:p-4">
+      <h1 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-4">Your Processed Video</h1>
       
       {videoUrl && (
-        <div className="w-full max-w-4xl mb-8">
+        <div className="w-full max-w-[280px] sm:max-w-[320px] md:max-w-[360px] mb-2 sm:mb-4">
           <video
             src={videoUrl}
             className="w-full rounded-lg shadow-lg"
@@ -67,18 +67,18 @@ function ResultsPage() {
         </div>
       )}
       
-      <div className="flex space-x-4">
+      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
         <button
           onClick={handleDownload}
-          className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          className="flex items-center justify-center px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700"
         >
-          <ArrowDownTrayIcon className="w-5 h-5 mr-2" />
+          <ArrowDownTrayIcon className="w-4 h-4 mr-1.5" />
           Download Video
         </button>
         
         <button
           onClick={handleNewVideo}
-          className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700"
+          className="px-3 py-1.5 text-sm bg-gray-600 text-white rounded-lg hover:bg-gray-700"
         >
           Upload New Video
         </button>

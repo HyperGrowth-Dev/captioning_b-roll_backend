@@ -103,16 +103,49 @@ const colors = [
   }
 ];
 
+const fontSizes = [
+  { 
+    name: 'Small',
+    value: 24,
+    previewStyle: {
+      fontSize: '24px'
+    }
+  },
+  { 
+    name: 'Medium',
+    value: 32,
+    previewStyle: {
+      fontSize: '32px'
+    }
+  },
+  { 
+    name: 'Large',
+    value: 40,
+    previewStyle: {
+      fontSize: '40px'
+    }
+  },
+  { 
+    name: 'Extra Large',
+    value: 48,
+    previewStyle: {
+      fontSize: '48px'
+    }
+  }
+];
+
 function ProcessingPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [selectedFile, setSelectedFile] = useState(location.state?.file || null);
   const [selectedFont, setSelectedFont] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
+  const [selectedFontSize, setSelectedFontSize] = useState(null);
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoAspectRatio, setVideoAspectRatio] = useState(16/9);
   const [isFontPanelOpen, setIsFontPanelOpen] = useState(true);
   const [isColorPanelOpen, setIsColorPanelOpen] = useState(false);
+  const [isFontSizePanelOpen, setIsFontSizePanelOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
   const [processingError, setProcessingError] = useState(null);
@@ -153,6 +186,12 @@ function ProcessingPage() {
   const handleColorSelect = (color) => {
     setSelectedColor(color);
     setIsColorPanelOpen(false);
+    setIsFontSizePanelOpen(true);
+  };
+
+  const handleFontSizeSelect = (size) => {
+    setSelectedFontSize(size);
+    setIsFontSizePanelOpen(false);
   };
 
   const toggleFontPanel = () => {
@@ -166,6 +205,13 @@ function ProcessingPage() {
     if (!selectedFont) return;
     setIsColorPanelOpen(!isColorPanelOpen);
     setIsFontPanelOpen(false);
+  };
+
+  const toggleFontSizePanel = () => {
+    if (!selectedColor) return;
+    setIsFontSizePanelOpen(!isFontSizePanelOpen);
+    setIsFontPanelOpen(false);
+    setIsColorPanelOpen(false);
   };
 
   const handleProcessVideo = async () => {
@@ -185,7 +231,7 @@ function ProcessingPage() {
       const processData = await processVideo(inputKey, {
         font: selectedFont.family,
         color: selectedColor.value,
-        font_size: 24
+        font_size: selectedFontSize.value
       });
       console.log('Video processing initiated:', processData);
 
@@ -226,15 +272,15 @@ function ProcessingPage() {
   }, [processedVideoUrl, showProcessedVideo, isProcessing]);
 
   return (
-    <div className="min-h-screen flex">
-      {/* Video Preview Section - Fixed position */}
-      <div className="fixed left-0 w-1/2 h-screen bg-purple-950/50 p-8 flex items-center justify-center">
-        <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center space-y-4">
+    <div className="min-h-screen flex flex-col lg:flex-row">
+      {/* Video Preview Section */}
+      <div className="w-full lg:w-1/2 h-auto lg:h-screen bg-purple-950/50 p-2 sm:p-4 flex items-center justify-center">
+        <div className="w-full max-w-[280px] sm:max-w-[320px] md:max-w-[360px] mx-auto flex flex-col items-center justify-center space-y-2">
           {/* Video Preview */}
           <div 
             className="relative w-full rounded-xl overflow-hidden cyber-border bg-white"
             style={{
-              maxWidth: '480px',
+              maxWidth: '360px',
               aspectRatio: videoAspectRatio,
               margin: '0 auto'
             }}
@@ -296,12 +342,12 @@ function ProcessingPage() {
 
           {/* Video Toggle Controls */}
           {processedVideoUrl && !isProcessing && (
-            <div className="flex flex-col space-y-4">
-              <div className="flex space-x-4">
+            <div className="flex flex-col space-y-2 w-full">
+              <div className="flex flex-col sm:flex-row space-y-1 sm:space-y-0 sm:space-x-2">
                 <button
                   onClick={() => setShowProcessedVideo(false)}
                   className={clsx(
-                    'px-4 py-2 rounded-lg transition-all',
+                    'px-3 py-1.5 text-sm rounded-lg transition-all w-full sm:w-auto',
                     !showProcessedVideo
                       ? 'bg-purple-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -312,7 +358,7 @@ function ProcessingPage() {
                 <button
                   onClick={() => setShowProcessedVideo(true)}
                   className={clsx(
-                    'px-4 py-2 rounded-lg transition-all',
+                    'px-3 py-1.5 text-sm rounded-lg transition-all w-full sm:w-auto',
                     showProcessedVideo
                       ? 'bg-purple-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -323,7 +369,7 @@ function ProcessingPage() {
               </div>
               <button
                 onClick={handleDownload}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all"
+                className="px-3 py-1.5 text-sm rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all w-full sm:w-auto"
               >
                 Download Processed Video
               </button>
@@ -332,27 +378,27 @@ function ProcessingPage() {
         </div>
       </div>
 
-      {/* Options Section - Fixed position and centered */}
-      <div className="fixed right-0 w-1/2 h-screen flex items-center justify-center">
+      {/* Options Section */}
+      <div className="w-full lg:w-1/2 h-auto lg:h-screen flex items-center justify-center p-2 sm:p-4">
         <LayoutGroup>
           <motion.div 
             layout
-            className="w-full max-w-md px-8 space-y-4"
+            className="w-full max-w-[280px] sm:max-w-[320px] md:max-w-[360px] px-2 sm:px-4 space-y-2"
           >
             {/* Font Selection Panel */}
             <motion.div layout>
               <motion.button
                 layout
                 onClick={toggleFontPanel}
-                className="w-full p-4 cyber-border backdrop-blur-xl bg-purple-900/30 hover:bg-purple-800/40 
+                className="w-full p-2 sm:p-3 cyber-border backdrop-blur-xl bg-purple-900/30 hover:bg-purple-800/40 
                          transition-colors duration-300 rounded-xl"
               >
                 <motion.div layout className="flex items-center justify-between">
-                  <motion.h2 layout className="text-xl font-semibold text-purple-100">
+                  <motion.h2 layout className="text-base sm:text-lg font-semibold text-purple-100">
                     Font Selection
                   </motion.h2>
                   {selectedFont && (
-                    <motion.span layout className="text-sm text-purple-300">
+                    <motion.span layout className="text-xs sm:text-sm text-purple-300">
                       Selected: {selectedFont.name}
                     </motion.span>
                   )}
@@ -384,7 +430,7 @@ function ProcessingPage() {
                     }}
                     className="overflow-hidden"
                   >
-                    <motion.div layout className="space-y-3 mt-4">
+                    <motion.div layout className="space-y-2 mt-2">
                       {fonts.map((font) => (
                         <motion.button
                           layout
@@ -394,16 +440,16 @@ function ProcessingPage() {
                           whileHover={{ scale: 1.02 }}
                           transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         >
-                          <motion.div layout className="bg-white p-4">
+                          <motion.div layout className="bg-white p-2 sm:p-3">
                             <motion.span 
                               layout 
-                              className="block text-xl text-black" 
+                              className="block text-sm sm:text-base text-black" 
                               style={font.previewStyle}
                             >
                               The quick brown fox jumps over the lazy dog
                             </motion.span>
-                            <motion.div layout className="flex justify-between items-center mt-2">
-                              <motion.span layout className="text-sm text-gray-600">{font.name}</motion.span>
+                            <motion.div layout className="flex justify-between items-center mt-1">
+                              <motion.span layout className="text-xs sm:text-sm text-gray-600">{font.name}</motion.span>
                               <motion.span layout className="text-xs text-gray-500">{font.style}</motion.span>
                             </motion.div>
                           </motion.div>
@@ -420,18 +466,18 @@ function ProcessingPage() {
               <motion.button
                 layout
                 onClick={toggleColorPanel}
-                className={`w-full p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
+                className={`w-full p-2 sm:p-3 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
                           ${selectedFont ? 'bg-purple-900/30 hover:bg-purple-800/40 cursor-pointer' : 'bg-purple-900/10 cursor-not-allowed'}`}
                 disabled={!selectedFont}
               >
                 <motion.div layout className="flex items-center justify-between">
-                  <motion.h2 layout className="text-xl font-semibold text-purple-100">
+                  <motion.h2 layout className="text-base sm:text-lg font-semibold text-purple-100">
                     Color Selection
                   </motion.h2>
                   {selectedColor && (
                     <motion.div 
                       layout 
-                      className={`w-6 h-6 rounded-full ${selectedColor.bgClass}`}
+                      className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full ${selectedColor.bgClass}`}
                     />
                   )}
                 </motion.div>
@@ -462,13 +508,13 @@ function ProcessingPage() {
                     }}
                     className="overflow-hidden"
                   >
-                    <motion.div layout className="space-y-3 mt-4">
+                    <motion.div layout className="space-y-2 mt-2">
                       {colors.map((color) => (
                         <motion.button
                           layout
                           key={color.name}
                           onClick={() => handleColorSelect(color)}
-                          className={`w-full h-16 rounded-xl ${color.bgClass} transition-all duration-300 hover:scale-[1.02]`}
+                          className={`w-full h-12 sm:h-14 rounded-xl ${color.bgClass} transition-all duration-300 hover:scale-[1.02]`}
                           whileHover={{ scale: 1.02 }}
                           transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         />
@@ -479,9 +525,94 @@ function ProcessingPage() {
               </AnimatePresence>
             </motion.div>
 
+            {/* Font Size Selection Panel */}
+            <motion.div layout>
+              <motion.button
+                layout
+                onClick={toggleFontSizePanel}
+                className={`w-full p-2 sm:p-3 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
+                          ${selectedColor ? 'bg-purple-900/30 hover:bg-purple-800/40 cursor-pointer' : 'bg-purple-900/10 cursor-not-allowed'}`}
+                disabled={!selectedColor}
+              >
+                <motion.div layout className="flex items-center justify-between">
+                  <motion.h2 layout className="text-base sm:text-lg font-semibold text-purple-100">
+                    Font Size
+                  </motion.h2>
+                  {selectedFontSize && (
+                    <motion.span layout className="text-xs sm:text-sm text-purple-300">
+                      Selected: {selectedFontSize.name}
+                    </motion.span>
+                  )}
+                </motion.div>
+              </motion.button>
+
+              <AnimatePresence mode="wait">
+                {isFontSizePanelOpen && (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ 
+                      opacity: 1,
+                      height: 'auto',
+                      transition: {
+                        type: "spring",
+                        stiffness: 70,
+                        damping: 15
+                      }
+                    }}
+                    exit={{ 
+                      opacity: 0,
+                      height: 0,
+                      transition: {
+                        type: "spring",
+                        stiffness: 70,
+                        damping: 15
+                      }
+                    }}
+                    className="overflow-hidden"
+                  >
+                    <motion.div layout className="space-y-2 mt-2">
+                      {fontSizes.map((size) => (
+                        <motion.button
+                          layout
+                          key={size.name}
+                          onClick={() => handleFontSizeSelect(size)}
+                          className="w-full overflow-hidden rounded-xl cyber-border"
+                          whileHover={{ scale: 1.02 }}
+                          transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                        >
+                          <motion.div layout className="bg-white p-2 sm:p-3">
+                            <motion.div 
+                              layout 
+                              className="min-h-[40px] sm:min-h-[48px] flex items-center justify-center"
+                            >
+                              <motion.span 
+                                layout 
+                                className="block text-sm sm:text-base text-black text-center" 
+                                style={{
+                                  ...selectedFont?.previewStyle,
+                                  ...size.previewStyle
+                                }}
+                              >
+                                Caption Text
+                              </motion.span>
+                            </motion.div>
+                            <motion.div layout className="flex justify-between items-center mt-1">
+                              <motion.span layout className="text-xs sm:text-sm text-gray-600">{size.name}</motion.span>
+                              <motion.span layout className="text-xs text-gray-500">{size.value}px</motion.span>
+                            </motion.div>
+                          </motion.div>
+                        </motion.button>
+                      ))}
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
             {/* Process Button */}
             <AnimatePresence mode="wait">
-              {selectedFont && selectedColor && !isColorPanelOpen && (
+              {selectedFont && selectedColor && selectedFontSize && !isFontSizePanelOpen && (
                 <motion.button
                   layout
                   initial={{ opacity: 0, y: 20 }}
@@ -489,8 +620,8 @@ function ProcessingPage() {
                   exit={{ opacity: 0, y: 20 }}
                   onClick={handleProcessVideo}
                   disabled={isProcessing}
-                  className="w-full p-6 rounded-xl cyber-border backdrop-blur-xl bg-purple-600/30 hover:bg-purple-500/40 
-                           transition-all duration-300 text-purple-100 text-xl font-semibold disabled:opacity-50 
+                  className="w-full p-3 sm:p-4 rounded-xl cyber-border backdrop-blur-xl bg-purple-600/30 hover:bg-purple-500/40 
+                           transition-all duration-300 text-purple-100 text-base sm:text-lg font-semibold disabled:opacity-50 
                            disabled:cursor-not-allowed"
                   whileHover={{ scale: isProcessing ? 1 : 1.02 }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -528,7 +659,7 @@ function ProcessingPage() {
 
       {/* Error Display */}
       {processingError && (
-        <div className="fixed bottom-4 right-4 bg-red-500 text-white p-4 rounded-lg shadow-lg">
+        <div className="fixed bottom-2 right-2 sm:bottom-4 sm:right-4 bg-red-500 text-white p-2 sm:p-3 rounded-lg shadow-lg max-w-[280px] sm:max-w-[320px] text-sm">
           {typeof processingError === 'string' ? processingError : 
            processingError?.message || processingError?.detail || 'An error occurred'}
         </div>
