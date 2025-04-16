@@ -99,7 +99,8 @@ class CaptionProcessor:
     def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", 
                             color="white", font_size=48, position=0.7, 
                             shadow_type="none", shadow_color="black", 
-                            shadow_blur=12, shadow_opacity=0.9):
+                            shadow_blur=12, shadow_opacity=0.9,
+                            highlight_color="#FFD700", highlight_enabled=True):
         """Create individual caption clips for each segment with custom font and color settings"""
         caption_clips = []
         
@@ -120,6 +121,7 @@ class CaptionProcessor:
             start_time = segment['start']
             end_time = segment['end']
             text = segment['text'].strip()
+            words = segment.get('words', [])
             
             if text:  # Only create clips for non-empty text
                 # Calculate dimensions for both shadow and main text
@@ -146,58 +148,151 @@ class CaptionProcessor:
                 vertical_padding = int(font_size * 0.3)  # 30% of font size for top and bottom padding
                 total_height += (len(lines) - 1) * line_spacing + vertical_padding * 2
                 
-                if shadow_type == "blur":
-                    # Create multiple blur layers with different intensities
-                    blur_layers = [
-                        {"radius": shadow_blur * 2, "opacity": shadow_opacity * 0.4},  # Outer blur
-                        {"radius": shadow_blur * 1.5, "opacity": shadow_opacity * 0.6},  # Middle blur
-                        {"radius": shadow_blur, "opacity": shadow_opacity}  # Inner blur
-                    ]
+                # Create base image for the entire text (non-highlighted)
+                padding = int(font_size * 0.2)
+                base_img = Image.new('RGBA', (max_line_width + padding * 2, 
+                                            int(total_height) + padding * 2), 
+                                   (0, 0, 0, 0))
+                base_draw = ImageDraw.Draw(base_img)
+                
+                # Convert main color to RGBA
+                if color.startswith('#'):
+                    r = int(color[1:3], 16)
+                    g = int(color[3:5], 16)
+                    b = int(color[5:7], 16)
+                    main_color_rgba = (r, g, b, 255)
+                else:
+                    rgb = ImageColor.getrgb(color)
+                    main_color_rgba = (*rgb, 255)
+                
+                # Draw each line of main text with proper vertical positioning
+                current_y = padding + vertical_padding
+                for i, line in enumerate(lines):
+                    text_bbox = pil_font.getbbox(line)
+                    line_width = text_bbox[2] - text_bbox[0]
+                    x = (base_img.width - line_width) // 2
+                    base_draw.text((x, current_y), line, font=pil_font, fill=main_color_rgba)
+                    current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
+                
+                # Create base clip
+                base_array = np.array(base_img)
+                base_clip = (ImageClip(base_array)
+                            .set_duration(end_time - start_time)
+                           .set_start(start_time)
+                           .set_position((center_x - base_img.width//2,
+                                        text_y_position - base_img.height//2)))
+                
+                caption_clips.append(base_clip)
+                
+                # If highlighting is enabled, create individual word clips
+                if highlight_enabled and words:
+                    # Convert highlight color to RGBA
+                    if highlight_color.startswith('#'):
+                        r = int(highlight_color[1:3], 16)
+                        g = int(highlight_color[3:5], 16)
+                        b = int(highlight_color[5:7], 16)
+                        highlight_color_rgba = (r, g, b, 180)  # Semi-transparent background
+                    else:
+                        rgb = ImageColor.getrgb(highlight_color)
+                        highlight_color_rgba = (*rgb, 180)  # Semi-transparent background
                     
-                    for layer in blur_layers:
-                        # Create a PIL Image for the shadow
-                        padding = int(layer["radius"] * 3)  # Increased padding for larger blur
-                        img = Image.new('RGBA', (max_line_width + padding * 2, 
-                                               int(total_height) + padding * 2), 
-                                      (0, 0, 0, 0))
-                        draw = ImageDraw.Draw(img)
+                    # Create clips for each word
+                    for word in words:
+                        word_text = word['word'].upper()
+                        word_start = word['start']
+                        word_end = word['end']
                         
-                        # Convert shadow color to RGBA
-                        if shadow_color.startswith('#'):
-                            r = int(shadow_color[1:3], 16)
-                            g = int(shadow_color[3:5], 16)
-                            b = int(shadow_color[5:7], 16)
-                            shadow_color_rgba = (r, g, b, int(255 * layer["opacity"]))
-                        else:
-                            rgb = ImageColor.getrgb(shadow_color)
-                            shadow_color_rgba = (*rgb, int(255 * layer["opacity"]))
+                        # Create word image
+                        word_img = Image.new('RGBA', (max_line_width + padding * 2, 
+                                                    int(total_height) + padding * 2), 
+                                          (0, 0, 0, 0))
+                        word_draw = ImageDraw.Draw(word_img)
                         
-                        # Draw each line of text with proper vertical positioning
+                        # Find the word's position in the text
                         current_y = padding + vertical_padding
+                        word_found = False
+                        
                         for i, line in enumerate(lines):
-                            text_bbox = pil_font.getbbox(line)
-                            line_width = text_bbox[2] - text_bbox[0]
-                            x = (img.width - line_width) // 2
-                            draw.text((x, current_y), line, font=pil_font, fill=shadow_color_rgba)
+                            if word_text in line:
+                                text_bbox = pil_font.getbbox(line)
+                                line_width = text_bbox[2] - text_bbox[0]
+                                x = (word_img.width - line_width) // 2
+                                
+                                # Get word dimensions
+                                word_bbox = pil_font.getbbox(word_text)
+                                word_width = word_bbox[2] - word_bbox[0]
+                                word_height = word_bbox[3] - word_bbox[1]
+                                
+                                # Calculate word position
+                                word_x = x + line.find(word_text) * (line_width / len(line))
+                                
+                                # Calculate the exact vertical position using the text bounding box
+                                word_y = current_y + word_bbox[1]  # Use the top of the text bounding box
+                                
+                                word_draw.rectangle([
+                                    word_x,
+                                    word_y,
+                                    word_x + word_width,
+                                    word_y + word_height
+                                ], fill=highlight_color_rgba)
+                                
+                                word_found = True
+                                break
+                            
                             current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
                         
-                        # Apply gaussian blur with larger radius
-                        shadow_img = img.filter(ImageFilter.GaussianBlur(radius=layer["radius"]))
-                        
-                        # Convert to numpy array for MoviePy
-                        shadow_array = np.array(shadow_img)
-                        
-                        # Create shadow clip
-                        shadow_clip = (ImageClip(shadow_array)
-                                     .set_duration(end_time - start_time)
-                                     .set_start(start_time)
-                                     .set_position((center_x - img.width//2,
-                                                  text_y_position - img.height//2)))
-                        
-                        caption_clips.append(shadow_clip)
+                        if word_found:
+                            # Create word clip
+                            word_array = np.array(word_img)
+                            word_clip = (ImageClip(word_array)
+                                       .set_duration(word_end - word_start)
+                                       .set_start(start_time + word_start - segment['start'])
+                                       .set_position((center_x - word_img.width//2,
+                                                    text_y_position - word_img.height//2)))
+                            
+                            caption_clips.append(word_clip)
+                
+                # Add shadow if enabled
+                if shadow_type == "blur":
+                    # Create shadow image
+                    shadow_img = Image.new('RGBA', (max_line_width + padding * 2, 
+                                                  int(total_height) + padding * 2), 
+                                         (0, 0, 0, 0))
+                    shadow_draw = ImageDraw.Draw(shadow_img)
+                    
+                    # Convert shadow color to RGBA
+                    if shadow_color.startswith('#'):
+                        r = int(shadow_color[1:3], 16)
+                        g = int(shadow_color[3:5], 16)
+                        b = int(shadow_color[5:7], 16)
+                        shadow_color_rgba = (r, g, b, int(255 * shadow_opacity))
+                    else:
+                        rgb = ImageColor.getrgb(shadow_color)
+                        shadow_color_rgba = (*rgb, int(255 * shadow_opacity))
+                    
+                    # Draw each line of text with proper vertical positioning
+                    current_y = padding + vertical_padding
+                    for i, line in enumerate(lines):
+                        text_bbox = pil_font.getbbox(line)
+                        line_width = text_bbox[2] - text_bbox[0]
+                        x = (shadow_img.width - line_width) // 2
+                        shadow_draw.text((x, current_y), line, font=pil_font, fill=shadow_color_rgba)
+                        current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
+                    
+                    # Apply gaussian blur
+                    shadow_img = shadow_img.filter(ImageFilter.GaussianBlur(radius=shadow_blur))
+                    
+                    # Create shadow clip
+                    shadow_array = np.array(shadow_img)
+                    shadow_clip = (ImageClip(shadow_array)
+                                 .set_duration(end_time - start_time)
+                                 .set_start(start_time)
+                                 .set_position((center_x - shadow_img.width//2,
+                                              text_y_position - shadow_img.height//2)))
+                    
+                    caption_clips.append(shadow_clip)
                 elif shadow_type == "offset":
                     # Create offset shadow
-                    padding = int(font_size * 0.2)  # Small padding for offset shadow
                     offset_img = Image.new('RGBA', (max_line_width + padding * 2, 
                                                   int(total_height) + padding * 2), 
                                          (0, 0, 0, 0))
@@ -219,14 +314,11 @@ class CaptionProcessor:
                         text_bbox = pil_font.getbbox(line)
                         line_width = text_bbox[2] - text_bbox[0]
                         x = (offset_img.width - line_width) // 2
-                        # Draw text with offset (4px right and down)
                         offset_draw.text((x + 4, current_y + 4), line, font=pil_font, fill=shadow_color_rgba)
                         current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
                     
-                    # Convert to numpy array for MoviePy
-                    offset_array = np.array(offset_img)
-                    
                     # Create offset shadow clip
+                    offset_array = np.array(offset_img)
                     offset_clip = (ImageClip(offset_array)
                                  .set_duration(end_time - start_time)
                                  .set_start(start_time)
@@ -234,46 +326,9 @@ class CaptionProcessor:
                                               text_y_position - offset_img.height//2)))
                     
                     caption_clips.append(offset_clip)
-                
-                # Create main text clip using PIL
-                padding = int(font_size * 0.2)  # Small padding for main text
-                main_img = Image.new('RGBA', (max_line_width + padding * 2, 
-                                            int(total_height) + padding * 2), 
-                                   (0, 0, 0, 0))
-                main_draw = ImageDraw.Draw(main_img)
-                
-                # Convert main color to RGBA
-                if color.startswith('#'):
-                    r = int(color[1:3], 16)
-                    g = int(color[3:5], 16)
-                    b = int(color[5:7], 16)
-                    main_color_rgba = (r, g, b, 255)
-                else:
-                    rgb = ImageColor.getrgb(color)
-                    main_color_rgba = (*rgb, 255)
-                
-                # Draw each line of main text with proper vertical positioning
-                current_y = padding + vertical_padding
-                for i, line in enumerate(lines):
-                    text_bbox = pil_font.getbbox(line)
-                    line_width = text_bbox[2] - text_bbox[0]
-                    x = (main_img.width - line_width) // 2
-                    main_draw.text((x, current_y), line, font=pil_font, fill=main_color_rgba)
-                    current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
-                
-                # Convert to numpy array for MoviePy
-                main_array = np.array(main_img)
-                
-                # Create main text clip
-                main_clip = (ImageClip(main_array)
-                            .set_duration(end_time - start_time)
-                            .set_start(start_time)
-                            .set_position((center_x - main_img.width//2,
-                                         text_y_position - main_img.height//2)))
-                
-                caption_clips.append(main_clip)
         
         return caption_clips
+
     def save_transcript(self, segments, output_dir='output'):
         """Save transcript to a text file"""
         try:
