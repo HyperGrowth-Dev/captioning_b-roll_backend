@@ -75,7 +75,11 @@ async def process_video(
     font: str = Form("Montserrat-Bold"),  # Default font
     color: str = Form("white"),  # Default color
     font_size: int = Form(32),  # Default font size
-    position: float = Form(0.7)  # Default position
+    position: float = Form(0.7),  # Default position
+    shadow_type: str = Form("none"),  # Options: "none", "offset", "blur"
+    shadow_color: str = Form("black"),  # Shadow color
+    shadow_blur: int = Form(8),  # Blur radius (only used for blur shadow)
+    shadow_opacity: float = Form(0.9)  # Shadow opacity
 ):
     """Process uploaded video file"""
     try:
@@ -95,7 +99,11 @@ async def process_video(
             font=font,
             color=color,
             font_size=font_size,
-            position=position
+            position=position,
+            shadow_type=shadow_type,
+            shadow_color=shadow_color,
+            shadow_blur=shadow_blur,
+            shadow_opacity=shadow_opacity
         )
         
         # Clean up uploaded file
@@ -194,14 +202,15 @@ async def get_upload_url():
 
 @app.post("/api/process")
 async def process_video_s3(
-    input_key: str = Form(...),
-    font: str = Form(...),
-    color: str = Form(...),
-    font_size: int = Form(24),
-    position: float = Form(0.7)
+    input_key: str = Form(..., description="The S3 key of the uploaded video"),
+    font: str = Form(..., description="Font name to use for captions"),
+    color: str = Form(..., description="Color of the captions"),
+    font_size: int = Form(24, description="Font size for captions"),
+    position: float = Form(0.7, description="Vertical position of captions (0-1)"),
+    drop_shadow: bool = Form(False, description="Whether to add a drop shadow to the captions")
 ):
     """Process a video from S3 with the given options"""
-    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, position={position}")
+    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, position={position}, drop_shadow={drop_shadow}")
     
     try:
         # Generate a unique output key
@@ -215,7 +224,7 @@ async def process_video_s3(
         await s3_service.download_file(input_key, local_input_path)
         
         # Process the video
-        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, position={position}")
+        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, position={position}, drop_shadow={drop_shadow}")
         
         # Create VideoProcessor instance and process the video
         processor = VideoProcessor()
@@ -224,7 +233,8 @@ async def process_video_s3(
             font=font,
             color=color,
             font_size=font_size,
-            position=position
+            position=position,
+            drop_shadow=drop_shadow
         )
         
         # Upload the processed video to S3

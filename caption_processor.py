@@ -1,5 +1,6 @@
 import whisper
-from moviepy.video.VideoClip import TextClip
+from moviepy.editor import TextClip, VideoFileClip, ImageClip, CompositeVideoClip
+from PIL import Image, ImageDraw, ImageFont, ImageFilter, ImageColor
 import logging
 import os
 import numpy as np
@@ -95,26 +96,25 @@ class CaptionProcessor:
             print(f"Error processing audio: {e}")
             return None
 
-    def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", color="white", font_size=48, position=0.7):
+    def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", 
+                            color="white", font_size=48, position=0.7, 
+                            shadow_type="none", shadow_color="black", 
+                            shadow_blur=8, shadow_opacity=0.9):
         """Create individual caption clips for each segment with custom font and color settings"""
         caption_clips = []
         
         # Get the absolute path to the font file
         font_path = os.path.join(self.fonts_dir, f"{font}.ttf")
-        print(f"Using font path: {font_path}")  # Debug print
-        print(f"Using font size: {font_size}")  # Debug print
-        print(f"Using caption position: {position}")  # Debug print
         
         # Check if font file exists
         if not os.path.exists(font_path):
-            print(f"Font file not found: {font_path}")  # Debug print
-            # Fallback to system font
+            print(f"Font file not found: {font_path}")
             font_path = "/System/Library/Fonts/Helvetica.ttc"
-            print(f"Falling back to: {font_path}")  # Debug print
         
-        # Calculate text positioning based on video dimensions and user preference
-        text_y_position = video_height * position  # Use the position parameter
-        max_text_width = video_width * 0.8  # 80% of video width
+        # Calculate text positioning and sizing
+        text_y_position = video_height * position
+        max_text_width = int(video_width * 0.7)  # 70% of video width
+        center_x = video_width // 2
         
         for segment in segments:
             start_time = segment['start']
@@ -122,6 +122,58 @@ class CaptionProcessor:
             text = segment['text'].strip()
             
             if text:  # Only create clips for non-empty text
+                if shadow_type == "blur":
+                    # Create multiple blur layers with different intensities
+                    blur_layers = [
+                        {"radius": shadow_blur * 2, "opacity": shadow_opacity * 0.4},  # Outer blur
+                        {"radius": shadow_blur * 1.5, "opacity": shadow_opacity * 0.6},  # Middle blur
+                        {"radius": shadow_blur, "opacity": shadow_opacity}  # Inner blur
+                    ]
+                    
+                    for layer in blur_layers:
+                        # Create a PIL Image for the shadow
+                        # Make it larger to accommodate the blur
+                        padding = int(layer["radius"] * 3)  # Increased padding for larger blur
+                        img = Image.new('RGBA', (max_text_width + padding * 2, 
+                                               font_size * 2 + padding * 2), 
+                                      (0, 0, 0, 0))
+                        draw = ImageDraw.Draw(img)
+                        pil_font = ImageFont.truetype(font_path, font_size)
+                        
+                        # Convert shadow color to RGBA
+                        if shadow_color.startswith('#'):
+                            r = int(shadow_color[1:3], 16)
+                            g = int(shadow_color[3:5], 16)
+                            b = int(shadow_color[5:7], 16)
+                            shadow_color_rgba = (r, g, b, int(255 * layer["opacity"]))
+                        else:
+                            rgb = ImageColor.getrgb(shadow_color)
+                            shadow_color_rgba = (*rgb, int(255 * layer["opacity"]))
+                        
+                        # Draw the shadow text
+                        text_bbox = draw.textbbox((0, 0), text.upper(), font=pil_font)
+                        text_width = text_bbox[2] - text_bbox[0]
+                        text_height = text_bbox[3] - text_bbox[1]
+                        x = (img.width - text_width) // 2
+                        y = (img.height - text_height) // 2
+                        draw.text((x, y), text.upper(), font=pil_font, fill=shadow_color_rgba)
+                        
+                        # Apply gaussian blur with larger radius
+                        shadow_img = img.filter(ImageFilter.GaussianBlur(radius=layer["radius"]))
+                        
+                        # Convert to numpy array for MoviePy
+                        shadow_array = np.array(shadow_img)
+                        
+                        # Create shadow clip
+                        shadow_clip = (ImageClip(shadow_array)
+                                     .set_duration(end_time - start_time)
+                                     .set_start(start_time)
+                                     .set_position((center_x - img.width//2,
+                                                  text_y_position - img.height//2)))
+                        
+                        caption_clips.append(shadow_clip)
+                
+                # Create main text clip
                 main_clip = (TextClip(text.upper(),
                                     font=font_path,
                                     fontsize=font_size,
@@ -130,13 +182,16 @@ class CaptionProcessor:
                                     method='caption',
                                     align='center')
                             .set_duration(end_time - start_time)
-                            .set_position(('center', text_y_position))
                             .set_start(start_time))
+                
+                # Position main clip
+                main_clip = main_clip.set_position(
+                    lambda t: (center_x - main_clip.w//2, text_y_position - main_clip.h//2)
+                )
                 
                 caption_clips.append(main_clip)
         
         return caption_clips
-
     def save_transcript(self, segments, output_dir='output'):
         """Save transcript to a text file"""
         try:

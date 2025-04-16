@@ -110,7 +110,8 @@ class VideoProcessor:
             logger.error(f"Error creating b-roll clip: {str(e)}")
             return None
 
-    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32, position=0.7):
+    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32, position=0.7, 
+                     shadow_type="none", shadow_color="black", shadow_blur=8, shadow_opacity=0.9):
         """Process a video file with custom font and color settings"""
         try:
             # Load video
@@ -134,7 +135,11 @@ class VideoProcessor:
                 font=font,
                 color=color,
                 font_size=font_size,
-                position=position
+                position=position,
+                shadow_type=shadow_type,
+                shadow_color=shadow_color,
+                shadow_blur=shadow_blur,
+                shadow_opacity=shadow_opacity
             )
             
             # Get b-roll suggestions from transcript segments
