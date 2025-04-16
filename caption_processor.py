@@ -195,6 +195,45 @@ class CaptionProcessor:
                                                   text_y_position - img.height//2)))
                         
                         caption_clips.append(shadow_clip)
+                elif shadow_type == "offset":
+                    # Create offset shadow
+                    padding = int(font_size * 0.2)  # Small padding for offset shadow
+                    offset_img = Image.new('RGBA', (max_line_width + padding * 2, 
+                                                  int(total_height) + padding * 2), 
+                                         (0, 0, 0, 0))
+                    offset_draw = ImageDraw.Draw(offset_img)
+                    
+                    # Convert shadow color to RGBA
+                    if shadow_color.startswith('#'):
+                        r = int(shadow_color[1:3], 16)
+                        g = int(shadow_color[3:5], 16)
+                        b = int(shadow_color[5:7], 16)
+                        shadow_color_rgba = (r, g, b, int(255 * shadow_opacity))
+                    else:
+                        rgb = ImageColor.getrgb(shadow_color)
+                        shadow_color_rgba = (*rgb, int(255 * shadow_opacity))
+                    
+                    # Draw each line of text with proper vertical positioning and offset
+                    current_y = padding + vertical_padding
+                    for i, line in enumerate(lines):
+                        text_bbox = pil_font.getbbox(line)
+                        line_width = text_bbox[2] - text_bbox[0]
+                        x = (offset_img.width - line_width) // 2
+                        # Draw text with offset (4px right and down)
+                        offset_draw.text((x + 4, current_y + 4), line, font=pil_font, fill=shadow_color_rgba)
+                        current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
+                    
+                    # Convert to numpy array for MoviePy
+                    offset_array = np.array(offset_img)
+                    
+                    # Create offset shadow clip
+                    offset_clip = (ImageClip(offset_array)
+                                 .set_duration(end_time - start_time)
+                                 .set_start(start_time)
+                                 .set_position((center_x - offset_img.width//2,
+                                              text_y_position - offset_img.height//2)))
+                    
+                    caption_clips.append(offset_clip)
                 
                 # Create main text clip using PIL
                 padding = int(font_size * 0.2)  # Small padding for main text

@@ -145,6 +145,9 @@ function ProcessingPage() {
   const [selectedFont, setSelectedFont] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
   const [selectedFontSize, setSelectedFontSize] = useState(null);
+  const [selectedShadowType, setSelectedShadowType] = useState(null);
+  const [selectedShadowColor, setSelectedShadowColor] = useState(null);
+  const [selectedShadowBlur, setSelectedShadowBlur] = useState(null);
   const [previewText, setPreviewText] = useState("YOUR CAPTION TEXT");
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoAspectRatio, setVideoAspectRatio] = useState(16/9);
@@ -154,6 +157,7 @@ function ProcessingPage() {
   const [isFontPanelOpen, setIsFontPanelOpen] = useState(true);
   const [isColorPanelOpen, setIsColorPanelOpen] = useState(false);
   const [isFontSizePanelOpen, setIsFontSizePanelOpen] = useState(false);
+  const [isShadowPanelOpen, setIsShadowPanelOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processedVideoUrl, setProcessedVideoUrl] = useState(null);
   const [processingError, setProcessingError] = useState(null);
@@ -260,6 +264,22 @@ function ProcessingPage() {
   const handleFontSizeSelect = (size) => {
     setSelectedFontSize(size);
     setIsFontSizePanelOpen(false);
+    setIsShadowPanelOpen(true);
+  };
+
+  const handleShadowTypeSelect = (type) => {
+    setSelectedShadowType(type);
+    if (type === "none") {
+      setIsShadowPanelOpen(false);
+      setShowDragPrompt(true);
+      // Auto-hide the prompt after 5 seconds
+      setTimeout(() => setShowDragPrompt(false), 5000);
+    }
+  };
+
+  const handleShadowColorSelect = (color) => {
+    setSelectedShadowColor(color);
+    setIsShadowPanelOpen(false);
     setShowDragPrompt(true);
     // Auto-hide the prompt after 5 seconds
     setTimeout(() => setShowDragPrompt(false), 5000);
@@ -285,6 +305,14 @@ function ProcessingPage() {
     setIsColorPanelOpen(false);
   };
 
+  const toggleShadowPanel = () => {
+    if (!selectedFontSize) return;
+    setIsShadowPanelOpen(!isShadowPanelOpen);
+    setIsFontPanelOpen(false);
+    setIsColorPanelOpen(false);
+    setIsFontSizePanelOpen(false);
+  };
+
   const handleProcessVideo = async () => {
     try {
       setIsProcessing(true);
@@ -301,7 +329,11 @@ function ProcessingPage() {
         font: selectedFont.family,
         color: selectedColor.value,
         font_size: selectedFontSize.value,
-        position: captionPosition // Add position to processing options
+        position: captionPosition,
+        shadow_type: selectedShadowType || "none",
+        shadow_color: selectedShadowColor?.value || "black",
+        shadow_blur: selectedShadowBlur || 12,
+        shadow_opacity: 0.9
       });
       console.log('Video processing initiated:', processData);
 
@@ -394,7 +426,11 @@ function ProcessingPage() {
                           color: selectedColor?.value || 'white',
                           textAlign: 'center',
                           maxWidth: '90%',
-                          textShadow: '0px 0px 4px rgba(0,0,0,0.8)',
+                          textShadow: selectedShadowType === "blur" 
+                            ? `0 0 ${selectedShadowBlur || 12}px ${selectedShadowColor?.value || 'black'}`
+                            : selectedShadowType === "offset"
+                              ? `2px 2px 0 ${selectedShadowColor?.value || 'black'}`
+                              : 'none',
                           whiteSpace: 'pre-wrap',
                           wordBreak: 'break-word',
                           userSelect: 'none',
@@ -725,6 +761,123 @@ function ProcessingPage() {
                 )}
               </AnimatePresence>
             </motion.div>
+
+            {/* Shadow Type Selection Panel */}
+            <motion.button
+              onClick={toggleShadowPanel}
+              className="w-full p-2 sm:p-3 cyber-border backdrop-blur-xl bg-purple-900/30 hover:bg-purple-800/40 
+                         transition-colors duration-300 rounded-xl"
+            >
+              <motion.div layout className="flex items-center justify-between">
+                <motion.h2 layout className="text-base sm:text-lg font-semibold text-purple-100">
+                  Shadow Effect
+                </motion.h2>
+                {selectedShadowType && (
+                  <motion.span layout className="text-xs sm:text-sm text-purple-300">
+                    Selected: {selectedShadowType}
+                  </motion.span>
+                )}
+              </motion.div>
+            </motion.button>
+
+            <AnimatePresence mode="wait">
+              {isShadowPanelOpen && (
+                <motion.div
+                  layout
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ 
+                    opacity: 1,
+                    height: 'auto',
+                    transition: {
+                      type: "spring",
+                      stiffness: 70,
+                      damping: 15
+                    }
+                  }}
+                  exit={{ 
+                    opacity: 0,
+                    height: 0,
+                    transition: {
+                      type: "spring",
+                      stiffness: 70,
+                      damping: 15
+                    }
+                  }}
+                  className="w-full p-4 space-y-4"
+                >
+                  {/* Shadow Type Selection */}
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => handleShadowTypeSelect("none")}
+                      className={clsx(
+                        "p-3 rounded-lg transition-all",
+                        selectedShadowType === "none" 
+                          ? "bg-purple-600/50 text-purple-100" 
+                          : "bg-purple-900/30 text-purple-300 hover:bg-purple-800/40"
+                      )}
+                    >
+                      None
+                    </button>
+                    <button
+                      onClick={() => handleShadowTypeSelect("blur")}
+                      className={clsx(
+                        "p-3 rounded-lg transition-all",
+                        selectedShadowType === "blur" 
+                          ? "bg-purple-600/50 text-purple-100" 
+                          : "bg-purple-900/30 text-purple-300 hover:bg-purple-800/40"
+                      )}
+                    >
+                      Blur Shadow
+                    </button>
+                    <button
+                      onClick={() => handleShadowTypeSelect("offset")}
+                      className={clsx(
+                        "p-3 rounded-lg transition-all",
+                        selectedShadowType === "offset" 
+                          ? "bg-purple-600/50 text-purple-100" 
+                          : "bg-purple-900/30 text-purple-300 hover:bg-purple-800/40"
+                      )}
+                    >
+                      Offset Shadow
+                    </button>
+                  </div>
+
+                  {/* Shadow Color Selection */}
+                  {selectedShadowType && selectedShadowType !== "none" && (
+                    <div className="space-y-2">
+                      <label className="block text-sm font-medium text-purple-200">
+                        Shadow Color
+                      </label>
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { value: "black", label: "Black" },
+                          { value: "white", label: "White" },
+                          { value: "#FF4500", label: "Orange" },
+                          { value: "#00FF00", label: "Green" },
+                          { value: "#FF0000", label: "Red" },
+                          { value: "#0000FF", label: "Blue" },
+                          { value: "#FFFF00", label: "Yellow" },
+                          { value: "#800080", label: "Purple" }
+                        ].map((color) => (
+                          <button
+                            key={color.value}
+                            onClick={() => handleShadowColorSelect(color)}
+                            className={clsx(
+                              "p-2 rounded-lg transition-all",
+                              selectedShadowColor?.value === color.value
+                                ? "ring-2 ring-purple-400"
+                                : "hover:ring-2 hover:ring-purple-400/50"
+                            )}
+                            style={{ backgroundColor: color.value }}
+                            title={color.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Process Button */}
             <AnimatePresence mode="wait">

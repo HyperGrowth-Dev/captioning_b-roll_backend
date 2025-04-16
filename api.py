@@ -207,10 +207,13 @@ async def process_video_s3(
     color: str = Form(..., description="Color of the captions"),
     font_size: int = Form(24, description="Font size for captions"),
     position: float = Form(0.7, description="Vertical position of captions (0-1)"),
-    drop_shadow: bool = Form(False, description="Whether to add a drop shadow to the captions")
+    shadow_type: str = Form("none", description="Type of shadow effect (none/blur/offset)"),
+    shadow_color: str = Form("black", description="Color of the shadow"),
+    shadow_blur: int = Form(12, description="Blur radius for blur shadow"),
+    shadow_opacity: float = Form(0.9, description="Opacity of the shadow")
 ):
     """Process a video from S3 with the given options"""
-    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, position={position}, drop_shadow={drop_shadow}")
+    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, position={position}, shadow_type={shadow_type}, shadow_color={shadow_color}, shadow_blur={shadow_blur}, shadow_opacity={shadow_opacity}")
     
     try:
         # Generate a unique output key
@@ -224,7 +227,7 @@ async def process_video_s3(
         await s3_service.download_file(input_key, local_input_path)
         
         # Process the video
-        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, position={position}, drop_shadow={drop_shadow}")
+        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, position={position}, shadow_type={shadow_type}, shadow_color={shadow_color}, shadow_blur={shadow_blur}, shadow_opacity={shadow_opacity}")
         
         # Create VideoProcessor instance and process the video
         processor = VideoProcessor()
@@ -234,7 +237,10 @@ async def process_video_s3(
             color=color,
             font_size=font_size,
             position=position,
-            drop_shadow=drop_shadow
+            shadow_type=shadow_type,
+            shadow_color=shadow_color,
+            shadow_blur=shadow_blur,
+            shadow_opacity=shadow_opacity
         )
         
         # Upload the processed video to S3
