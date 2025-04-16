@@ -108,28 +108,32 @@ const fontSizes = [
     name: 'Small',
     value: 24,
     previewStyle: {
-      fontSize: '24px'
+      fontSize: '24px',
+      '--text-scale': '1'
     }
   },
   { 
     name: 'Medium',
     value: 32,
     previewStyle: {
-      fontSize: '32px'
+      fontSize: '32px',
+      '--text-scale': '1'
     }
   },
   { 
     name: 'Large',
     value: 40,
     previewStyle: {
-      fontSize: '40px'
+      fontSize: '40px',
+      '--text-scale': '0.9'
     }
   },
   { 
     name: 'Extra Large',
     value: 48,
     previewStyle: {
-      fontSize: '48px'
+      fontSize: '48px',
+      '--text-scale': '0.8'
     }
   }
 ];
@@ -144,6 +148,9 @@ function ProcessingPage() {
   const [previewText, setPreviewText] = useState("YOUR CAPTION TEXT");
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoAspectRatio, setVideoAspectRatio] = useState(16/9);
+  const [captionPosition, setCaptionPosition] = useState(0.7); // 70% from top by default
+  const [isDraggingCaption, setIsDraggingCaption] = useState(false);
+  const [isNearCenter, setIsNearCenter] = useState(false); // New state for center snapping
   const [isFontPanelOpen, setIsFontPanelOpen] = useState(true);
   const [isColorPanelOpen, setIsColorPanelOpen] = useState(false);
   const [isFontSizePanelOpen, setIsFontSizePanelOpen] = useState(false);
@@ -152,7 +159,9 @@ function ProcessingPage() {
   const [processingError, setProcessingError] = useState(null);
   const [showProcessedVideo, setShowProcessedVideo] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
+  const [showDragPrompt, setShowDragPrompt] = useState(false);
   const videoRef = useRef(null);
+  const videoContainerRef = useRef(null);
 
   // Set video URL when file is received
   useEffect(() => {
@@ -170,6 +179,56 @@ function ProcessingPage() {
     console.log('Selected Color:', selectedColor?.value);
     console.log('Selected Font Size:', selectedFontSize?.value);
   }, [selectedFont, selectedColor, selectedFontSize]);
+
+  // Add drag handling functions
+  const handleCaptionDragStart = (e) => {
+    e.preventDefault();
+    setIsDraggingCaption(true);
+  };
+
+  const handleCaptionDrag = (e) => {
+    if (!isDraggingCaption || !videoContainerRef.current) return;
+    
+    const containerRect = videoContainerRef.current.getBoundingClientRect();
+    const mouseY = e.clientY - containerRect.top;
+    const containerHeight = containerRect.height;
+    
+    // Calculate position as percentage (0 to 1)
+    let newPosition = mouseY / containerHeight;
+    
+    // Check if we're near the center (within 5% of 0.5)
+    const isNear = Math.abs(newPosition - 0.5) < 0.05;
+    setIsNearCenter(isNear);
+    
+    // Snap to center if near
+    if (isNear) {
+      newPosition = 0.5;
+    }
+    
+    // Add constraints (15% from top, 20% from bottom)
+    newPosition = Math.max(0.15, Math.min(0.8, newPosition));
+    
+    setCaptionPosition(newPosition);
+  };
+
+  const handleCaptionDragEnd = () => {
+    setIsDraggingCaption(false);
+  };
+
+  useEffect(() => {
+    if (isDraggingCaption) {
+      const handleMouseMove = (e) => handleCaptionDrag(e);
+      const handleMouseUp = () => handleCaptionDragEnd();
+
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+
+      return () => {
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDraggingCaption]);
 
   const handleFileSelect = (event) => {
     const file = event.target.files[0];
@@ -201,6 +260,9 @@ function ProcessingPage() {
   const handleFontSizeSelect = (size) => {
     setSelectedFontSize(size);
     setIsFontSizePanelOpen(false);
+    setShowDragPrompt(true);
+    // Auto-hide the prompt after 5 seconds
+    setTimeout(() => setShowDragPrompt(false), 5000);
   };
 
   const toggleFontPanel = () => {
@@ -230,27 +292,24 @@ function ProcessingPage() {
       setProcessedVideoUrl(null);
       setShowProcessedVideo(false);
 
-      // Step 1: Upload video to S3
       console.log('Starting video upload...');
       const { key: inputKey } = await uploadVideo(selectedFile);
       console.log('Video uploaded successfully with key:', inputKey);
 
-      // Step 2: Process video
       console.log('Starting video processing...');
       const processData = await processVideo(inputKey, {
         font: selectedFont.family,
         color: selectedColor.value,
-        font_size: selectedFontSize.value
+        font_size: selectedFontSize.value,
+        position: captionPosition // Add position to processing options
       });
       console.log('Video processing initiated:', processData);
 
-      // Step 3: Poll for processed video
       console.log('Waiting for processed video...');
       setProcessingStatus('Waiting for video to be ready...');
       const downloadUrl = await downloadProcessedVideo(processData.output_key);
       console.log('Successfully got download URL:', downloadUrl);
 
-      // Navigate to results
       navigate('/results', { state: { downloadUrl } });
     } catch (error) {
       console.error('Error processing video:', error);
@@ -293,6 +352,7 @@ function ProcessingPage() {
               aspectRatio: videoAspectRatio,
               margin: '0 auto'
             }}
+            ref={videoContainerRef}
           >
             {videoUrl ? (
               <>
@@ -312,54 +372,43 @@ function ProcessingPage() {
                 
                 {/* Caption Preview Overlay */}
                 {selectedFont && !isProcessing && (
-                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                    {/* Black outline effect */}
-                    {[...Array(8)].map((_, index) => {
-                      const angle = (index * Math.PI) / 4;
-                      const offsetX = Math.cos(angle) * 2;
-                      const offsetY = Math.sin(angle) * 2;
-                      return (
-                        <div
-                          key={index}
-                          className="absolute inset-0 flex items-center justify-center"
-                          style={{
-                            transform: `translate(${offsetX}px, ${offsetY}px)`,
-                          }}
-                        >
-                          <span
-                            style={{
-                              ...selectedFont.previewStyle,
-                              fontSize: `${selectedFontSize?.value || 32}px`,
-                              color: 'black',
-                              textAlign: 'center',
-                              maxWidth: '90%',
-                              textShadow: '0px 0px 1px black',
-                              whiteSpace: 'nowrap',
-                              display: 'block',
-                            }}
-                          >
-                            Caption Text
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {/* Main text */}
-                    <span
-                      className="relative"
-                      style={{
-                        ...selectedFont.previewStyle,
-                        fontSize: `${selectedFontSize?.value || 32}px`,
-                        color: selectedColor?.value || 'white',
-                        textAlign: 'center',
-                        maxWidth: '90%',
-                        textShadow: '0px 0px 1px rgba(0,0,0,0.5)',
-                        whiteSpace: 'nowrap',
-                        display: 'block',
+                  <>
+                    <div 
+                      className={clsx(
+                        "absolute inset-x-0 flex items-center justify-center z-10",
+                        isDraggingCaption ? "cursor-grabbing" : "cursor-grab"
+                      )}
+                      style={{ 
+                        top: `${captionPosition * 100}%`, 
+                        transform: 'translateY(-50%)',
+                        transition: isNearCenter ? 'all 0.1s ease-out' : 'none'
                       }}
+                      onMouseDown={handleCaptionDragStart}
                     >
-                      Caption Text
-                    </span>
-                  </div>
+                      {/* Main text */}
+                      <span
+                        className="relative px-4 py-2"
+                        style={{
+                          ...selectedFont.previewStyle,
+                          fontSize: `${selectedFontSize?.value || 32}px`,
+                          color: selectedColor?.value || 'white',
+                          textAlign: 'center',
+                          maxWidth: '90%',
+                          textShadow: '0px 0px 4px rgba(0,0,0,0.8)',
+                          whiteSpace: 'pre-wrap',
+                          wordBreak: 'break-word',
+                          userSelect: 'none',
+                          WebkitUserSelect: 'none',
+                          display: 'block',
+                          lineHeight: '1.2',
+                          transform: 'scale(var(--text-scale, 1))',
+                          transformOrigin: 'center center'
+                        }}
+                      >
+                        {previewText}
+                      </span>
+                    </div>
+                  </>
                 )}
               </>
             ) : (
@@ -680,28 +729,46 @@ function ProcessingPage() {
             {/* Process Button */}
             <AnimatePresence mode="wait">
               {selectedFont && selectedColor && selectedFontSize && !isFontSizePanelOpen && (
-                <motion.button
-                  layout
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  onClick={handleProcessVideo}
-                  disabled={isProcessing}
-                  className="w-full p-3 sm:p-4 rounded-xl cyber-border backdrop-blur-xl bg-purple-600/30 hover:bg-purple-500/40 
-                           transition-all duration-300 text-purple-100 text-base sm:text-lg font-semibold disabled:opacity-50 
-                           disabled:cursor-not-allowed"
-                  whileHover={{ scale: isProcessing ? 1 : 1.02 }}
-                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
-                >
-                  {isProcessing ? (
-                    <>
-                      <FontAwesomeIcon icon={faSpinner} className="animate-spin mr-2" />
-                      Processing...
-                    </>
-                  ) : (
-                    'Process Video'
-                  )}
-                </motion.button>
+                <>
+                  {/* Drag Instructions Prompt */}
+                  <AnimatePresence>
+                    {showDragPrompt && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        className="mb-4 p-3 rounded-lg bg-purple-600/20 backdrop-blur-sm border border-purple-500/30"
+                      >
+                        <p className="text-purple-200 text-sm text-center">
+                          ✨ Drag the caption up or down to position it. It will automatically snap to the center when nearby.
+                        </p>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <motion.button
+                    layout
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 20 }}
+                    onClick={handleProcessVideo}
+                    disabled={isProcessing}
+                    className="w-full p-3 sm:p-4 rounded-xl cyber-border backdrop-blur-xl bg-purple-600/30 hover:bg-purple-500/40 
+                             transition-all duration-300 text-purple-100 text-base sm:text-lg font-semibold disabled:opacity-50 
+                             disabled:cursor-not-allowed"
+                    whileHover={{ scale: isProcessing ? 1 : 1.02 }}
+                    transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  >
+                    {isProcessing ? (
+                      <>
+                        <FontAwesomeIcon icon={faSpinner} className="animate-spin mr-2" />
+                        Processing...
+                      </>
+                    ) : (
+                      'Process Video'
+                    )}
+                  </motion.button>
+                </>
               )}
             </AnimatePresence>
             

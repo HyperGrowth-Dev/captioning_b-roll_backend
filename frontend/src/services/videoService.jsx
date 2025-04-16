@@ -33,6 +33,7 @@ export const processVideo = async (inputKey, options) => {
     formData.append('font', options.font);
     formData.append('color', options.color);
     formData.append('font_size', options.font_size);
+    formData.append('position', options.position);
 
     const { data } = await axios.post(`${API_URL}/process`, formData, {
       headers: {

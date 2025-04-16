@@ -74,7 +74,8 @@ async def process_video(
     file: UploadFile = File(...),
     font: str = Form("Montserrat-Bold"),  # Default font
     color: str = Form("white"),  # Default color
-    font_size: int = Form(48)  # Default font size
+    font_size: int = Form(32),  # Default font size
+    position: float = Form(0.7)  # Default position
 ):
     """Process uploaded video file"""
     try:
@@ -93,7 +94,8 @@ async def process_video(
             file_path,
             font=font,
             color=color,
-            font_size=font_size
+            font_size=font_size,
+            position=position
         )
         
         # Clean up uploaded file
@@ -195,15 +197,16 @@ async def process_video_s3(
     input_key: str = Form(...),
     font: str = Form(...),
     color: str = Form(...),
-    font_size: int = Form(24)
+    font_size: int = Form(24),
+    position: float = Form(0.7)
 ):
     """Process a video from S3 with the given options"""
-    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}")
+    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, position={position}")
     
     try:
         # Generate a unique output key
         process_id = str(uuid.uuid4())
-        output_key = f"processed/{process_id}.mp4"
+        output_key = f"processed/{process_id}/video.mp4"
         logger.info(f"Generated output key: {output_key}")
         
         # Download the video from S3
@@ -212,7 +215,7 @@ async def process_video_s3(
         await s3_service.download_file(input_key, local_input_path)
         
         # Process the video
-        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}")
+        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, position={position}")
         
         # Create VideoProcessor instance and process the video
         processor = VideoProcessor()
@@ -220,7 +223,8 @@ async def process_video_s3(
             local_input_path,
             font=font,
             color=color,
-            font_size=font_size
+            font_size=font_size,
+            position=position
         )
         
         # Upload the processed video to S3

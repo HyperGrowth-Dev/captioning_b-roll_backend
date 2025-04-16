@@ -95,7 +95,7 @@ class CaptionProcessor:
             print(f"Error processing audio: {e}")
             return None
 
-    def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", color="white", font_size=48):
+    def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", color="white", font_size=48, position=0.7):
         """Create individual caption clips for each segment with custom font and color settings"""
         caption_clips = []
         
@@ -103,6 +103,7 @@ class CaptionProcessor:
         font_path = os.path.join(self.fonts_dir, f"{font}.ttf")
         print(f"Using font path: {font_path}")  # Debug print
         print(f"Using font size: {font_size}")  # Debug print
+        print(f"Using caption position: {position}")  # Debug print
         
         # Check if font file exists
         if not os.path.exists(font_path):
@@ -111,11 +112,9 @@ class CaptionProcessor:
             font_path = "/System/Library/Fonts/Helvetica.ttc"
             print(f"Falling back to: {font_path}")  # Debug print
         
-        # Calculate text positioning based on video dimensions
-        # Position text in the bottom third of the video
-        text_y_position = video_height * 0.7  # 70% from the top
+        # Calculate text positioning based on video dimensions and user preference
+        text_y_position = video_height * position  # Use the position parameter
         max_text_width = video_width * 0.8  # 80% of video width
-        padding = 20
         
         for segment in segments:
             start_time = segment['start']
@@ -123,7 +122,6 @@ class CaptionProcessor:
             text = segment['text'].strip()
             
             if text:  # Only create clips for non-empty text
-                # Remove stroke/outline effect. Only create the main text clip.
                 main_clip = (TextClip(text.upper(),
                                     font=font_path,
                                     fontsize=font_size,
