@@ -67,6 +67,26 @@ const fonts = [
       fontWeight: 400,
       fontStyle: 'normal'
     }
+  },
+  { 
+    name: 'RubikMaps Regular', 
+    family: 'RubikMaps-Regular',
+    style: 'Modern & Geometric',
+    previewStyle: {
+      fontFamily: 'RubikMaps',
+      fontWeight: 400,
+      fontStyle: 'normal'
+    }
+  },
+  { 
+    name: 'Nabla Regular', 
+    family: 'Nabla-Regular-VariableFont_EDPT,EHLT',
+    style: 'Playful & Modern',
+    previewStyle: {
+      fontFamily: 'Nabla',
+      fontWeight: 400,
+      fontStyle: 'normal'
+    }
   }
 ];
 

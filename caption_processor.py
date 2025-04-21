@@ -35,11 +35,10 @@ class CaptionProcessor:
             word_count += 1
             current_words.append(word)
             
-            # Split after every 3 words
             if word_count >= self.max_words_per_segment:
                 # Create new segment
                 new_segment = {
-                    'start': current_start,
+                    'start': current_words[0]['start'],  # Use first word's start time
                     'end': word['end'],
                     'text': ' '.join(w['word'] for w in current_words),
                     'words': current_words.copy()
@@ -54,7 +53,7 @@ class CaptionProcessor:
         # Add remaining words if any
         if current_words:
             new_segment = {
-                'start': current_start,
+                'start': current_words[0]['start'],  # Use first word's start time
                 'end': words[-1]['end'],
                 'text': ' '.join(w['word'] for w in current_words),
                 'words': current_words
@@ -118,10 +117,18 @@ class CaptionProcessor:
         center_x = video_width // 2
         
         for segment in segments:
-            start_time = segment['start']
+            if not segment.get('words'):
+                continue
+            
+            # Use the first word's start time for the segment start
+            start_time = segment['words'][0]['start']
             end_time = segment['end']
             text = segment['text'].strip()
-            words = segment.get('words', [])
+            words = segment['words']
+            
+            if segment.get('words'):
+                print(f"Segment timing: {segment['start']:.3f} - {segment['end']:.3f}")
+                print(f"First word timing: {segment['words'][0]['start']:.3f} - {segment['words'][0]['end']:.3f}")
             
             if text:  # Only create clips for non-empty text
                 # Calculate dimensions for both shadow and main text
@@ -174,27 +181,17 @@ class CaptionProcessor:
                     base_draw.text((x, current_y), line, font=pil_font, fill=main_color_rgba)
                     current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
                 
-                # Create base clip
-                base_array = np.array(base_img)
-                base_clip = (ImageClip(base_array)
-                            .set_duration(end_time - start_time)
-                           .set_start(start_time)
-                           .set_position((center_x - base_img.width//2,
-                                        text_y_position - base_img.height//2)))
-                
-                caption_clips.append(base_clip)
-                
-                # If highlighting is enabled, create individual word clips
+                # If highlighting is enabled, create individual word clips (bottom layer)
                 if highlight_enabled and words:
                     # Convert highlight color to RGBA
                     if highlight_color.startswith('#'):
                         r = int(highlight_color[1:3], 16)
                         g = int(highlight_color[3:5], 16)
                         b = int(highlight_color[5:7], 16)
-                        highlight_color_rgba = (r, g, b, 180)  # Semi-transparent background
+                        highlight_color_rgba = (r, g, b, 230)  # More opaque background
                     else:
                         rgb = ImageColor.getrgb(highlight_color)
-                        highlight_color_rgba = (*rgb, 180)  # Semi-transparent background
+                        highlight_color_rgba = (*rgb, 230)  # More opaque background
                     
                     # Create clips for each word
                     for word in words:
@@ -213,27 +210,31 @@ class CaptionProcessor:
                         word_found = False
                         
                         for i, line in enumerate(lines):
-                            if word_text in line:
-                                text_bbox = pil_font.getbbox(line)
-                                line_width = text_bbox[2] - text_bbox[0]
-                                x = (word_img.width - line_width) // 2
+                            word_start_idx = line.find(word_text)
+                            if word_start_idx != -1:
+                                text_before = line[:word_start_idx]
+                                text_before_bbox = pil_font.getbbox(text_before)
+                                word_x = x + text_before_bbox[2]
                                 
                                 # Get word dimensions
                                 word_bbox = pil_font.getbbox(word_text)
                                 word_width = word_bbox[2] - word_bbox[0]
                                 word_height = word_bbox[3] - word_bbox[1]
                                 
-                                # Calculate word position
-                                word_x = x + line.find(word_text) * (line_width / len(line))
+                                # Use the same y-position as the base text
+                                word_y = current_y
                                 
-                                # Calculate the exact vertical position using the text bounding box
-                                word_y = current_y + word_bbox[1]  # Use the top of the text bounding box
+                                # Add padding only to top and bottom
+                                padding_y = int(font_size * 0.05)  # 5% padding on top and bottom
+                                
+                                # Get exact text metrics for vertical alignment
+                                ascent, descent = pil_font.getmetrics()
                                 
                                 word_draw.rectangle([
                                     word_x,
-                                    word_y,
+                                    word_y,  # Align with the text baseline
                                     word_x + word_width,
-                                    word_y + word_height
+                                    word_y + ascent + descent  # Use font metrics for exact height
                                 ], fill=highlight_color_rgba)
                                 
                                 word_found = True
@@ -246,13 +247,13 @@ class CaptionProcessor:
                             word_array = np.array(word_img)
                             word_clip = (ImageClip(word_array)
                                        .set_duration(word_end - word_start)
-                                       .set_start(start_time + word_start - segment['start'])
+                                       .set_start(word_start)
                                        .set_position((center_x - word_img.width//2,
                                                     text_y_position - word_img.height//2)))
                             
                             caption_clips.append(word_clip)
                 
-                # Add shadow if enabled
+                # Add shadow if enabled (middle layer)
                 if shadow_type == "blur":
                     # Create shadow image
                     shadow_img = Image.new('RGBA', (max_line_width + padding * 2, 
@@ -326,6 +327,200 @@ class CaptionProcessor:
                                               text_y_position - offset_img.height//2)))
                     
                     caption_clips.append(offset_clip)
+                
+                # Create base clip (top layer)
+                base_array = np.array(base_img)
+                base_clip = (ImageClip(base_array)
+                           .set_duration(end_time - start_time)
+                           .set_start(start_time)
+                           .set_position((center_x - base_img.width//2,
+                                        text_y_position - base_img.height//2)))
+                
+                caption_clips.append(base_clip)
+        
+        return caption_clips
+
+    def create_caption_clips_highlighted(self, segments, video_width, video_height, font="Montserrat-Bold", 
+                                       color="white", font_size=48, position=0.7,
+                                       highlight_color="#FFD700", highlight_style="rounded",
+                                       animation_style="pop", position_ratio=0.7):
+        """Create caption clips with improved word highlighting and animations"""
+        caption_clips = []
+        print("highlight_style: ", highlight_style)
+        print("animation_style: ", animation_style)
+        # Get the absolute path to the font file
+        font_path = os.path.join(self.fonts_dir, f"{font}.ttf")
+        
+        # Check if font file exists
+        if not os.path.exists(font_path):
+            print(f"Font file not found: {font_path}")
+            font_path = "/System/Library/Fonts/Helvetica.ttc"
+        
+        # Calculate text positioning
+        text_y_position = int(video_height * position_ratio)
+        center_x = video_width // 2
+        
+        # Convert colors to RGBA
+        if color.startswith('#'):
+            r = int(color[1:3], 16)
+            g = int(color[3:5], 16)
+            b = int(color[5:7], 16)
+            text_color = (r, g, b, 255)
+        else:
+            rgb = ImageColor.getrgb(color)
+            text_color = (*rgb, 255)
+            
+        if highlight_color.startswith('#'):
+            r = int(highlight_color[1:3], 16)
+            g = int(highlight_color[3:5], 16)
+            b = int(highlight_color[5:7], 16)
+            highlight_color_rgba = (r, g, b, 200)  # Semi-transparent highlight
+        else:
+            rgb = ImageColor.getrgb(highlight_color)
+            highlight_color_rgba = (*rgb, 200)
+        
+        # Initialize font
+        pil_font = ImageFont.truetype(font_path, font_size)
+        ascent, descent = pil_font.getmetrics()
+        line_height = ascent + descent
+        
+        for segment in segments:
+            start_time = segment['start']
+            end_time = segment['end']
+            text = segment['text'].strip()
+            words = segment.get('words', [])
+            
+            if not text:
+                continue
+                
+            # Split text into lines and calculate dimensions
+            lines = text.upper().split('\n')
+            line_widths = []
+            line_heights = []
+            total_height = 0
+            
+            for line in lines:
+                bbox = pil_font.getbbox(line)
+                line_width = bbox[2] - bbox[0]
+                line_widths.append(line_width)
+                line_heights.append(line_height)
+                total_height += line_height
+            
+            # Add line spacing
+            line_spacing = int(font_size * 0.2)
+            total_height += (len(lines) - 1) * line_spacing
+            
+            # Create base image for text
+            padding = int(font_size * 0.2)
+            max_line_width = max(line_widths)
+            base_img = Image.new('RGBA', (max_line_width + padding * 2, 
+                                        total_height + padding * 2), 
+                               (0, 0, 0, 0))
+            base_draw = ImageDraw.Draw(base_img)
+            
+            # Draw text lines
+            current_y = padding
+            for i, line in enumerate(lines):
+                x = (base_img.width - line_widths[i]) // 2
+                base_draw.text((x, current_y), line, font=pil_font, fill=text_color)
+                current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
+            
+            # Create base clip
+            base_array = np.array(base_img)
+            base_clip = (ImageClip(base_array)
+                       .set_duration(end_time - start_time)
+                       .set_start(start_time)
+                       .set_position((center_x - base_img.width//2,
+                                    text_y_position - base_img.height//2)))
+            
+            caption_clips.append(base_clip)
+            
+            # Create word highlight clips
+            if words:
+                current_y = padding
+                for i, line in enumerate(lines):
+                    line_words = [w for w in words if w['word'].upper() in line]
+                    if not line_words:
+                        current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
+                        continue
+                    
+                    # Calculate word positions in the line
+                    word_positions = []
+                    current_x = (base_img.width - line_widths[i]) // 2
+                    
+                    for word in line_words:
+                        word_text = word['word'].upper()
+                        word_start_idx = line.find(word_text)
+                        if word_start_idx == -1:
+                            continue
+                            
+                        # Get text before the word
+                        text_before = line[:word_start_idx]
+                        text_before_bbox = pil_font.getbbox(text_before)
+                        word_x = current_x + text_before_bbox[2]
+                        
+                        # Get word dimensions
+                        word_bbox = pil_font.getbbox(word_text)
+                        word_width = word_bbox[2] - word_bbox[0]
+                        
+                        word_positions.append({
+                            'word': word,
+                            'x': word_x,
+                            'width': word_width,
+                            'y': current_y
+                        })
+                    
+                    # Create highlight clips for each word
+                    for pos in word_positions:
+                        word = pos['word']
+                        word_start = word['start']
+                        word_end = word['end']
+                        
+                        # Create highlight image
+                        highlight_img = Image.new('RGBA', (max_line_width + padding * 2, 
+                                                         total_height + padding * 2), 
+                                                (0, 0, 0, 0))
+                        highlight_draw = ImageDraw.Draw(highlight_img)
+                        
+                        # Draw highlight with style
+                        if highlight_style == "rounded":
+                            # Add rounded corners
+                            radius = int(font_size * 0.1)
+                            highlight_draw.rounded_rectangle([
+                                pos['x'] - radius,
+                                pos['y'] - int(font_size * 0.1),
+                                pos['x'] + pos['width'] + radius,
+                                pos['y'] + ascent + int(font_size * 0.1)
+                            ], radius=radius, fill=highlight_color_rgba)
+                        else:  # Default rectangle
+                            highlight_draw.rectangle([
+                                pos['x'],
+                                pos['y'] - int(font_size * 0.1),
+                                pos['x'] + pos['width'],
+                                pos['y'] + ascent + int(font_size * 0.1)
+                            ], fill=highlight_color_rgba)
+                        
+                        # Create word clip with animation
+                        highlight_array = np.array(highlight_img)
+                        word_clip = ImageClip(highlight_array)
+                        
+                        # Apply animation
+                        if animation_style == "pop":
+                            # Scale animation
+                            word_clip = word_clip.fx(lambda gf, t: gf(t) * (1 + 0.1 * np.sin(t * 2 * np.pi)))
+                        elif animation_style == "fade":
+                            # Fade in/out animation
+                            word_clip = word_clip.fx(lambda gf, t: gf(t) * (1 - abs(t - 0.5) * 2))
+                        
+                        word_clip = (word_clip
+                                   .set_duration(word_end - word_start)
+                                   .set_start(word_start)
+                                   .set_position((center_x - highlight_img.width//2,
+                                                text_y_position - highlight_img.height//2)))
+                        
+                        caption_clips.append(word_clip)
+                    
+                    current_y += line_heights[i] + (line_spacing if i < len(lines) - 1 else 0)
         
         return caption_clips
 
