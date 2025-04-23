@@ -1,0 +1,24 @@
+{
+  "name": "caption-remotion",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "remotion studio",
+    "build": "remotion render src/compositions/Root.tsx CaptionVideo out/video.mp4",
+    "lambda": "remotion lambda render src/compositions/Root.tsx out/video.mp4"
+  },
+  "dependencies": {
+    "@remotion/bundler": "^4.0.0",
+    "@remotion/cli": "^4.0.0",
+    "@remotion/lambda": "^4.0.289",
+    "@remotion/player": "^4.0.0",
+    "@remotion/renderer": "^4.0.0",
+    "@remotion/transitions": "^4.0.289",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "typescript": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2"
+  }
+}

@@ -16,6 +16,8 @@ import logging
 from botocore.exceptions import ClientError
 import asyncio
 import boto3
+from moviepy.editor import VideoFileClip
+from backend.remotion_service import RemotionService
 
 # Configure logging
 logging.basicConfig(
@@ -216,36 +218,59 @@ async def process_video_s3(
         
         # Create VideoProcessor instance and process the video
         processor = VideoProcessor()
-        output_path = processor.process_video(
-            local_input_path,
+        
+        # Load video to get dimensions
+        video = VideoFileClip(local_input_path)
+        main_width, main_height = video.w, video.h
+        video_duration = video.duration
+        
+        # Extract audio
+        audio = video.audio
+        audio_path = f"/tmp/{uuid.uuid4()}.wav"
+        audio.write_audiofile(audio_path)
+        
+        # Generate captions
+        segments = processor.caption_processor.generate_captions(audio_path)
+        
+        # Create caption clips with custom settings
+        caption_data = processor.caption_processor.create_caption_clips(
+            segments, 
+            main_width,
+            main_height,
             font=font,
             color=color,
             font_size=font_size
         )
         
-        # Upload the processed video to S3
-        logger.info(f"Uploading processed video to S3 with key: {output_key}")
-        await s3_service.upload_file(output_path, output_key)
-        
-        # Verify the file exists
-        if not s3_service.file_exists(output_key):
-            logger.error(f"Failed to verify uploaded file in S3: {output_key}")
-            raise HTTPException(status_code=500, detail="Failed to verify uploaded file in S3")
-        logger.info(f"Successfully verified file in S3: {output_key}")
+        # Process video using Remotion
+        remotion_service = RemotionService()
+        result = remotion_service.process_video(
+            video_path=local_input_path,
+            captions=caption_data,
+            settings={
+                'font': font,
+                'color': color,
+                'fontSize': font_size,
+                'position': 0.7,  # Position captions at 70% from top
+                'maxWidth': main_width * 0.8,  # 80% of video width
+                'highlightColor': '#FFD700'  # Gold color for highlighting
+            }
+        )
         
         # Clean up local files
         logger.info("Cleaning up temporary files")
         os.remove(local_input_path)
-        os.remove(output_path)
+        os.remove(audio_path)
+        video.close()
         
         logger.info("Video processing completed successfully")
         return {
-            "status": "success",
-            "output_key": output_key
+            "output_url": result["output_url"],
+            "s3_key": result["s3_key"]
         }
+        
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/get-download-url/{key:path}")
@@ -356,7 +381,7 @@ async def check_file(key: str):
         return {"exists": exists}
     except Exception as e:
         logger.error(f"Error checking file: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"exists": False}
 
 if __name__ == "__main__":
     import uvicorn

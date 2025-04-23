@@ -139,9 +139,12 @@ class S3Service:
                         logger.warning(f"Waiting {retry_delay} seconds before retrying...")
                         time.sleep(retry_delay)
                         continue
-                    logger.error(f"File not found in S3 after {max_retries} attempts: {key}")
+                    logger.info(f"File not found in S3 after {max_retries} attempts: {key}")
                     return False
                 else:
                     logger.error(f"Error checking file existence in S3: {str(e)}")
-                    raise HTTPException(status_code=500, detail=f"Error checking file existence: {str(e)}")
+                    return False
+            except Exception as e:
+                logger.error(f"Unexpected error checking file existence in S3: {str(e)}")
+                return False
         return False 

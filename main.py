@@ -1,5 +1,5 @@
 import os
-from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
+from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip, TextClip
 from moviepy.video.fx.all import resize, fadein, fadeout
 import requests
 from dotenv import load_dotenv
@@ -65,7 +65,7 @@ def print_broll_analysis(analysis: dict, output_file: str = 'broll_suggestions.t
 class VideoProcessor:
     def __init__(self):
         logger.info("Initializing VideoProcessor")
-        self.caption_processor = CaptionProcessor()
+        self.caption_processor = CaptionProcessor(fps=30)  # Set default fps to 30
         pexels_key = os.getenv('PEXELS_API_KEY')
         if not pexels_key:
             logger.error("PEXELS_API_KEY not found in environment variables")
@@ -127,7 +127,7 @@ class VideoProcessor:
             segments = self.caption_processor.generate_captions(audio_path)
             
             # Create caption clips with custom settings
-            caption_clips = self.caption_processor.create_caption_clips(
+            caption_data = self.caption_processor.create_caption_clips(
                 segments, 
                 main_width,
                 main_height,
@@ -136,90 +136,32 @@ class VideoProcessor:
                 font_size=font_size
             )
             
-            # Get b-roll suggestions from transcript segments
-            broll_suggestions = {
-                'broll_suggestions': self.broll_analyzer.get_broll_suggestions(
-                    segments, 
-                    video_duration,
-                    video_width=main_width,
-                    video_height=main_height
-                )
+            # Initialize RemotionService
+            from backend.remotion_service import RemotionService
+            remotion_service = RemotionService()
+            
+            # Process video with Remotion
+            settings = {
+                'font': font,
+                'color': color,
+                'fontSize': font_size,
+                'fps': 30,
+                'position': 0.7,
+                'maxWidth': main_width * 0.8,
+                'highlightColor': '#FFD700'
             }
             
-            # Save b-roll analysis in both formats
-            #print_broll_analysis(broll_suggestions)  # Save as text file
-            self.broll_analyzer.save_analysis(broll_suggestions)  # Save as JSON
-            
-            # Create a temporary directory for b-roll videos
-            temp_dir = self.temp_manager.create_temp_dir(prefix='broll_')
-            
-            # Create clips list starting with main video
-            all_clips = [(video, 0)]  # Main video with z_index 0
-            
-            # Add b-roll clips at suggested timestamps
-            if broll_suggestions and 'broll_suggestions' in broll_suggestions:
-                for suggestion in broll_suggestions['broll_suggestions']:
-                    timestamp = suggestion['timestamp']
-                    duration = 3.0  # Fixed duration of 3 seconds
-                    
-                    # Skip if timestamp is beyond video duration
-                    if timestamp >= video_duration:
-                        logger.warning(f"Skipping b-roll at timestamp {timestamp}s as it's beyond video duration ({video_duration}s)")
-                        continue
-                    
-                    # Adjust duration if it would exceed video end
-                    if timestamp + duration > video_duration:
-                        duration = video_duration - timestamp
-                        logger.info(f"Adjusted b-roll duration to {duration}s to fit within video")
-                    
-                    # Download the first b-roll option
-                    if suggestion['broll_options']:
-                        broll_url = suggestion['broll_options'][0]['url']
-                        broll_path = self.download_broll_video(broll_url, temp_dir)
-                        
-                        if broll_path:
-                            # Create b-roll clip with transitions
-                            broll_clip = self.create_broll_clip(
-                                broll_path,
-                                duration=duration,
-                                transition_duration=0.2  # Quick transitions
-                            )
-                            
-                            if broll_clip:
-                                # Resize b-roll to match main video dimensions
-                                broll_clip = resize(broll_clip, width=main_width, height=main_height)
-                                
-                                # Set the start time for the b-roll clip
-                                broll_clip = broll_clip.set_start(timestamp)
-                                
-                                # Add b-roll clip to the list with z_index
-                                all_clips.append((broll_clip, 1))  # B-roll clip with z_index 1
-            
-            # Create the final composite video with z_index
-            final_video = CompositeVideoClip(
-                [clip for clip, _ in all_clips] + caption_clips,
-                size=(main_width, main_height)
-            )
-            
-            # Set the audio from the main video
-            final_video = final_video.set_audio(audio)
-            
-            # Save processed video
-            output_path = os.path.join('output', 'processed_video.mp4')
-            final_video.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile='temp/temp-audio.m4a',
-                remove_temp=True
+            output_url = remotion_service.process_video(
+                input_path,
+                caption_data,
+                settings
             )
             
             # Clean up
             video.close()
-            final_video.close()
             os.remove(audio_path)
             
-            return output_path
+            return output_url
             
         except Exception as e:
             logger.error(f"Error processing video: {str(e)}")
