@@ -19,7 +19,7 @@ class RemotionService:
 
     def process_video(
         self,
-        video_path: str,
+        video_url: str,
         captions: List[Dict[str, Any]],
         settings: Dict[str, Any]
     ) -> Dict[str, str]:
@@ -27,7 +27,7 @@ class RemotionService:
         Process a video with captions using local Remotion rendering
         
         Args:
-            video_path: Path to the input video
+            video_url: URL to the input video (S3 URL)
             captions: List of caption objects with text and timing
             settings: Video processing settings (font, color, etc.)
             
@@ -35,10 +35,10 @@ class RemotionService:
             Dictionary containing the output path
         """
         try:
-            logger.info(f"Starting video processing for: {video_path}")
+            logger.info(f"Starting video processing for: {video_url}")
             
             # Process video using local renderer
-            result = self.local_service.process_video(video_path, captions, settings)
+            result = self.local_service.process_video(video_url, captions, settings)
             
             logger.info("Video processing completed successfully")
             return result

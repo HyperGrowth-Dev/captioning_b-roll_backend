@@ -8,6 +8,7 @@ import logging
 from caption_processor import CaptionProcessor
 from broll_analyzer import BrollAnalyzer
 from utils import setup_logging, ensure_directory, TempDirManager
+from utils.ffmpeg_utils import FFmpegUtils
 import traceback
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -113,15 +114,12 @@ class VideoProcessor:
     def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=48):
         """Process a video file with custom font and color settings"""
         try:
-            # Load video
-            video = VideoFileClip(input_path)
-            main_width, main_height = video.w, video.h
-            video_duration = video.duration
+            # Get video info using FFmpeg
+            main_width, main_height, video_duration = FFmpegUtils.get_video_info(input_path)
             
-            # Extract audio
-            audio = video.audio
+            # Extract audio using FFmpeg
             audio_path = "temp/audio.wav"
-            audio.write_audiofile(audio_path)
+            FFmpegUtils.extract_audio(input_path, audio_path)
             
             # Generate captions
             segments = self.caption_processor.generate_captions(audio_path)
@@ -158,7 +156,6 @@ class VideoProcessor:
             )
             
             # Clean up
-            video.close()
             os.remove(audio_path)
             
             return output_url

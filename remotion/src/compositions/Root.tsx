@@ -1,5 +1,5 @@
 import { registerRoot, Composition } from 'remotion';
-import { CaptionVideo } from './CaptionVideo';
+import { CaptionVideo, CaptionVideoPropsSchema } from './CaptionVideo';
 import video from '../assets/fitness_test_vid.mov';
 
 const RemotionRoot = () => {
@@ -7,24 +7,35 @@ const RemotionRoot = () => {
     <>
       <Composition
         id="CaptionVideo"
-        component={CaptionVideo as any}
-        durationInFrames={300}
+        component={CaptionVideo}
+        durationInFrames={900}
         fps={30}
         width={576}
         height={1024}
+        schema={CaptionVideoPropsSchema}
         defaultProps={{
           videoSrc: video,
           captions: [
             {
-              text: "Hello World",
+              text: "This is a test caption",
               startFrame: 0,
-              endFrame: 30
+              endFrame: 90
+            },
+            {
+              text: "Another caption appears here",
+              startFrame: 150,
+              endFrame: 240
+            },
+            {
+              text: "Final test caption",
+              startFrame: 300,
+              endFrame: 390
             }
           ],
           font: "Arial",
           fontSize: 48,
           color: "#ffffff",
-          position: 0.8,
+          position: 0.1,
           transitions: { type: 'fade', duration: 15 }
         }}
       />

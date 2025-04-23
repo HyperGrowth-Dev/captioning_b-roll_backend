@@ -63,4 +63,10 @@ remotion/yarn-error.log*
 
 # OS specific
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Additional temporary files
+*.tmp
+*.temp
+.*.swp
+.*.swo 

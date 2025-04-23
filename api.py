@@ -18,6 +18,8 @@ import asyncio
 import boto3
 from moviepy.editor import VideoFileClip
 from backend.remotion_service import RemotionService
+import requests
+from utils.ffmpeg_utils import FFmpegUtils
 
 # Configure logging
 logging.basicConfig(
@@ -177,15 +179,24 @@ async def get_upload_url():
         logger.info(f"Generated upload key: {upload_key}")
         
         # Generate pre-signed URL
-        upload_url = s3_service.generate_presigned_url(upload_key, "put")
-        logger.info("Successfully generated upload URL")
-        
-        return {
-            "upload_url": upload_url,
-            "key": upload_key
-        }
+        try:
+            upload_url = s3_service.generate_presigned_url(upload_key, "put")
+            logger.info("Successfully generated upload URL")
+            
+            return {
+                "upload_url": upload_url,
+                "key": upload_key
+            }
+        except Exception as e:
+            logger.error(f"Error generating presigned URL: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate upload URL: {str(e)}"
+            )
+            
     except Exception as e:
-        logger.error(f"Error generating upload URL: {str(e)}")
+        logger.error(f"Error in get_upload_url endpoint: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
@@ -208,70 +219,159 @@ async def process_video_s3(
         output_key = f"processed/{process_id}.mp4"
         logger.info(f"Generated output key: {output_key}")
         
-        # Download the video from S3
-        local_input_path = f"/tmp/{uuid.uuid4()}.mp4"
-        logger.info(f"Downloading video from S3 to {local_input_path}")
-        await s3_service.download_file(input_key, local_input_path)
+        # Get the S3 URL for the input video
+        try:
+            video_url = s3_service.get_download_url(input_key)
+            logger.info(f"Retrieved S3 URL for video: {video_url}")
+        except Exception as e:
+            logger.error(f"Error getting S3 URL: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to get video URL: {str(e)}"
+            )
+        
+        # Create a temporary file for the video
+        temp_video_path = f"/tmp/{uuid.uuid4()}.mp4"
+        try:
+            # Download the video file
+            logger.info(f"Downloading video to {temp_video_path}")
+            response = requests.get(video_url, stream=True)
+            response.raise_for_status()
+            
+            with open(temp_video_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logger.info("Video downloaded successfully")
+        except Exception as e:
+            logger.error(f"Error downloading video: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to download video: {str(e)}"
+            )
         
         # Process the video
         logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}")
         
-        # Create VideoProcessor instance and process the video
-        processor = VideoProcessor()
-        
-        # Load video to get dimensions
-        video = VideoFileClip(local_input_path)
-        main_width, main_height = video.w, video.h
-        video_duration = video.duration
-        
-        # Extract audio
-        audio = video.audio
-        audio_path = f"/tmp/{uuid.uuid4()}.wav"
-        audio.write_audiofile(audio_path)
-        
-        # Generate captions
-        segments = processor.caption_processor.generate_captions(audio_path)
-        
-        # Create caption clips with custom settings
-        caption_data = processor.caption_processor.create_caption_clips(
-            segments, 
-            main_width,
-            main_height,
-            font=font,
-            color=color,
-            font_size=font_size
-        )
-        
-        # Process video using Remotion
-        remotion_service = RemotionService()
-        result = remotion_service.process_video(
-            video_path=local_input_path,
-            captions=caption_data,
-            settings={
-                'font': font,
-                'color': color,
-                'fontSize': font_size,
-                'position': 0.7,  # Position captions at 70% from top
-                'maxWidth': main_width * 0.8,  # 80% of video width
-                'highlightColor': '#FFD700'  # Gold color for highlighting
-            }
-        )
-        
-        # Clean up local files
-        logger.info("Cleaning up temporary files")
-        os.remove(local_input_path)
-        os.remove(audio_path)
-        video.close()
-        
-        logger.info("Video processing completed successfully")
-        return {
-            "output_url": result["output_url"],
-            "s3_key": result["s3_key"]
-        }
-        
+        try:
+            # Create VideoProcessor instance and process the video
+            processor = VideoProcessor()
+            
+            # Get video info using FFmpeg
+            try:
+                main_width, main_height, video_duration = FFmpegUtils.get_video_info(temp_video_path)
+                logger.info(f"Video loaded successfully. Dimensions: {main_width}x{main_height}, Duration: {video_duration}")
+            except Exception as e:
+                logger.error(f"Error getting video info: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to get video info: {str(e)}"
+                )
+            
+            # Extract audio using FFmpeg
+            try:
+                audio_path = f"/tmp/{uuid.uuid4()}.wav"
+                FFmpegUtils.extract_audio(temp_video_path, audio_path)
+                logger.info("Audio extracted successfully")
+            except Exception as e:
+                logger.error(f"Error extracting audio: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to extract audio: {str(e)}"
+                )
+            
+            # Generate captions
+            try:
+                segments = processor.caption_processor.generate_captions(audio_path)
+                logger.info(f"Generated {len(segments)} caption segments")
+            except Exception as e:
+                logger.error(f"Error generating captions: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate captions: {str(e)}"
+                )
+            
+            # Create caption clips
+            try:
+                caption_data = processor.caption_processor.create_caption_clips(
+                    segments, 
+                    main_width,
+                    main_height,
+                    font=font,
+                    color=color,
+                    font_size=font_size
+                )
+                logger.info("Caption clips created successfully")
+            except Exception as e:
+                logger.error(f"Error creating caption clips: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to create caption clips: {str(e)}"
+                )
+            
+            # Process video using Remotion
+            try:
+                remotion_service = RemotionService()
+                result = remotion_service.process_video(
+                    video_url=video_url,  # Use S3 URL instead of local file path
+                    captions=caption_data,
+                    settings={
+                        "font": font,
+                        "color": color,
+                        "fontSize": font_size,
+                        "fps": 30
+                    }
+                )
+                logger.info("Remotion processing completed successfully")
+            except Exception as e:
+                logger.error(f"Error in Remotion processing: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to process video with Remotion: {str(e)}"
+                )
+            
+            # Upload the processed video to S3
+            try:
+                output_path = result["output_path"]
+                await s3_service.upload_file(output_path, output_key)
+                logger.info(f"Uploaded processed video to S3: {output_key}")
+            except Exception as e:
+                logger.error(f"Error uploading processed video: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to upload processed video: {str(e)}"
+                )
+            
+            # Clean up temporary files
+            try:
+                os.remove(temp_video_path)
+                os.remove(audio_path)
+                os.remove(output_path)
+                logger.info("Temporary files cleaned up successfully")
+            except Exception as e:
+                logger.warning(f"Error cleaning up temporary files: {str(e)}")
+            
+            # Return the output key
+            return {"output_key": output_key}
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error in video processing pipeline: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Video processing failed: {str(e)}"
+            )
+            
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error processing video: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Unexpected error in process_video_s3: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {str(e)}"
+        )
 
 @app.get("/api/get-download-url/{key:path}")
 async def get_download_url(key: str):

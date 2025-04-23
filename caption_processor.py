@@ -1,5 +1,4 @@
 import whisper
-from moviepy.video.VideoClip import TextClip
 import logging
 import os
 from typing import List, Dict

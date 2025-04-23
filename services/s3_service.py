@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from fastapi import HTTPException
 import logging
 import time
+import traceback
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -42,33 +43,96 @@ class S3Service:
                 detail=f"Failed to initialize S3 service: {str(e)}"
             )
 
-    def generate_presigned_url(self, key: str, operation: str, expiration: int = 3600):
-        """Generate a presigned URL for upload or download"""
+    def get_download_url(self, key: str) -> str:
+        """Get a presigned S3 URL for a file"""
         try:
-            # For get operations, verify the file exists first
-            if operation == 'get':
-                try:
-                    self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
-                except ClientError as e:
-                    if e.response['Error']['Code'] == '404':
-                        raise HTTPException(status_code=404, detail="File not found in S3")
-                    raise
-
+            # Verify the file exists
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            
+            # Generate a presigned URL that expires in 1 hour
             url = self.s3_client.generate_presigned_url(
-                ClientMethod=f'{operation}_object',
+                'get_object',
                 Params={
                     'Bucket': self.bucket_name,
                     'Key': key
                 },
+                ExpiresIn=3600
+            )
+            logger.info(f"Generated presigned URL for key: {key}")
+            return url
+            
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '404':
+                logger.error(f"File not found in S3: {key}")
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"File not found: {key}"
+                )
+            else:
+                logger.error(f"Error generating presigned URL for {key}: {str(e)}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to generate download URL: {str(e)}"
+                )
+        except Exception as e:
+            logger.error(f"Unexpected error generating presigned URL: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate download URL: {str(e)}"
+            )
+
+    def generate_presigned_url(self, key: str, operation: str, expiration: int = 3600):
+        """Generate a presigned URL for upload or download"""
+        try:
+            logger.info(f"Generating presigned URL for {operation} operation on key: {key}")
+            
+            # For get operations, verify the file exists first
+            if operation == 'get':
+                try:
+                    logger.info(f"Verifying file exists for get operation: {key}")
+                    self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+                except ClientError as e:
+                    if e.response['Error']['Code'] == '404':
+                        logger.error(f"File not found in S3: {key}")
+                        raise HTTPException(status_code=404, detail="File not found in S3")
+                    logger.error(f"Error verifying file existence: {str(e)}")
+                    raise
+
+            # Generate the presigned URL
+            logger.info(f"Generating presigned URL with expiration: {expiration} seconds")
+            
+            # Prepare parameters based on operation type
+            params = {
+                'Bucket': self.bucket_name,
+                'Key': key
+            }
+            
+            # Only add ContentType for put operations
+            if operation == 'put':
+                params['ContentType'] = 'video/mp4'
+            
+            url = self.s3_client.generate_presigned_url(
+                ClientMethod=f'{operation}_object',
+                Params=params,
                 ExpiresIn=expiration
             )
-            logger.info(f"Generated presigned URL for {operation} operation on key: {key}")
+            
+            if not url:
+                raise Exception("Failed to generate presigned URL")
+                
+            logger.info(f"Successfully generated presigned URL for {operation} operation on key: {key}")
             return url
+            
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error generating presigned URL: {str(e)}")
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Stack trace: {traceback.format_exc()}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate presigned URL: {str(e)}"
+            )
 
     async def download_file(self, key: str, local_path: str):
         """Download a file from S3"""
