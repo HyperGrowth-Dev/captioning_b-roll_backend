@@ -13,7 +13,12 @@ export const CaptionVideoPropsSchema = z.object({
   captions: z.array(z.object({
     text: z.string(),
     startFrame: z.number(),
-    endFrame: z.number()
+    endFrame: z.number(),
+    words: z.array(z.object({
+      text: z.string(),
+      start: z.number(),
+      end: z.number()
+    })).optional()
   })),
   font: z.string(),
   fontSize: z.number(),
@@ -63,6 +68,22 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
     };
   }, [videoSrc, handle]);
 
+  const renderWord = (word: string, isHighlighted: boolean) => {
+    return (
+      <span
+        style={{
+          backgroundColor: isHighlighted ? '#FFFF00' : 'transparent',
+          padding: '2px 4px',
+          borderRadius: '4px',
+          margin: '0 2px',
+          transition: 'background-color 0.1s ease-in-out'
+        }}
+      >
+        {word}
+      </span>
+    );
+  };
+
   return (
     <AbsoluteFill>
       {isVideoLoaded ? (
@@ -94,6 +115,8 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
         {captions.map((caption, index) => {
           // Only show caption if current frame is within its time range
           if (frame >= caption.startFrame && frame <= caption.endFrame) {
+            const currentTime = frame / 30; // Convert frame to seconds (assuming 30fps)
+            
             return (
               <TransitionSeries.Sequence
                 key={index}
@@ -109,7 +132,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
                     fontFamily: `"${font}", sans-serif`,
                     fontSize: `${fontSize * (height / 1080)}px`,
                     color: color,
-                    textShadow: '2px 2px 4px rgba(0,0,0,0.8), -2px -2px 4px rgba(0,0,0,0.8)',
+                    textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
                     fontWeight: font.includes('Black') ? '900' : '700',
                     fontStyle: font.includes('Italic') ? 'italic' : 'normal',
                     zIndex: 1,
@@ -123,7 +146,21 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
                     padding: '8px 16px'
                   }}
                 >
-                  {caption.text}
+                  {caption.words ? (
+                    <div>
+                      {caption.words.map((word, wordIndex) => {
+                        const isHighlighted = currentTime >= word.start && currentTime <= word.end;
+                        return (
+                          <React.Fragment key={wordIndex}>
+                            {renderWord(word.text, isHighlighted)}
+                            {wordIndex < (caption.words?.length ?? 0) - 1 && ' '}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    caption.text
+                  )}
                 </div>
               </TransitionSeries.Sequence>
             );
