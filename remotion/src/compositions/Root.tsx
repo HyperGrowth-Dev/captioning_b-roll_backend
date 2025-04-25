@@ -1,5 +1,5 @@
 import { registerRoot, Composition } from 'remotion';
-import { CaptionVideo, CaptionVideoPropsSchema } from './CaptionVideo';
+import CaptionVideo, { CaptionVideoPropsSchema } from './CaptionVideo';
 import video from '../assets/fitness_test_vid.mov';
 
 const RemotionRoot = () => {
@@ -10,8 +10,8 @@ const RemotionRoot = () => {
         component={CaptionVideo}
         durationInFrames={900}
         fps={30}
-        width={576}
-        height={1024}
+        width={1920}
+        height={1080}
         schema={CaptionVideoPropsSchema}
         defaultProps={{
           videoSrc: video,
@@ -33,10 +33,10 @@ const RemotionRoot = () => {
             }
           ],
           font: "Arial",
-          fontSize: 48,
+          fontSize: 32,
           color: "#ffffff",
-          position: 0.1,
-          transitions: { type: 'fade', duration: 15 }
+          position: "bottom",
+          effect: true
         }}
       />
     </>
