@@ -109,7 +109,7 @@ class CaptionProcessor:
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return None
 
-    def create_caption_clips(self, segments: List[Dict], video_width: int, video_height: int, font: str = "Montserrat-Bold", color: str = "white", font_size: int = 48) -> List[Dict]:
+    def create_caption_clips(self, segments: List[Dict], video_width: int, video_height: int, font: str = "Montserrat-Bold", color: str = "white", font_size: int = 32) -> List[Dict]:
         """Create individual caption clips with word-level timing information and styling."""
         logger.info(f"Step 1: Starting caption clip creation for {len(segments)} segments")
         logger.debug(f"Video dimensions: {video_width}x{video_height}")

@@ -126,19 +126,39 @@ class RemotionLocalService:
                 "--pixel-format", "yuv420p",
                 "--audio-bitrate", "128k",
                 "--frames-per-second", "24",
-                "--timeout", "300000"
+                "--timeout", "300000",
+                "--log", "info"
             ]
 
             logger.info(f"Starting Remotion render with command: {' '.join(render_cmd)}")
-            result = subprocess.run(
+            
+            # Create a process with real-time output
+            process = subprocess.Popen(
                 render_cmd,
                 cwd=self.remotion_dir,
-                capture_output=True,
-                text=True
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
             )
 
-            if result.returncode != 0:
-                error_msg = f"Remotion render failed: {result.stderr}"
+            # Read output in real-time
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    # Clean and log the output
+                    cleaned_output = output.strip()
+                    if cleaned_output:
+                        logger.info(f"Remotion: {cleaned_output}")
+                        print(f"Remotion: {cleaned_output}")  # Print to terminal
+
+            # Get the return code
+            return_code = process.poll()
+            if return_code != 0:
+                error_msg = f"Remotion render failed with return code {return_code}"
                 logger.error(error_msg)
                 raise Exception(error_msg)
 

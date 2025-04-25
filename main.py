@@ -111,7 +111,7 @@ class VideoProcessor:
             logger.error(f"Error creating b-roll clip: {str(e)}")
             return None
 
-    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=48):
+    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32):
         """Process a video file with custom font and color settings"""
         try:
             # Get video info using FFmpeg

@@ -4,7 +4,7 @@ function VideoUploader() {
   const [file, setFile] = useState(null);
   const [font, setFont] = useState('Montserrat-Bold');
   const [color, setColor] = useState('white');
-  const [fontSize, setFontSize] = useState(48);
+  const [fontSize, setFontSize] = useState(32);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
