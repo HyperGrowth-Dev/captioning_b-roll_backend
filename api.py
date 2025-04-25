@@ -37,7 +37,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allows all origins
+    allow_origins=["http://localhost:3000"],  # Frontend origin
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
@@ -78,7 +78,7 @@ async def process_video(
     file: UploadFile = File(...),
     font: str = Form("Montserrat-Bold"),  # Default font
     color: str = Form("white"),  # Default color
-    font_size: int = Form(48)  # Default font size
+    font_size: int = Form(32)  # Default font size
 ):
     """Process uploaded video file"""
     try:
@@ -208,7 +208,7 @@ async def process_video_s3(
     input_key: str = Form(...),
     font: str = Form(...),
     color: str = Form(...),
-    font_size: int = Form(24)
+    font_size: int = Form(32)
 ):
     """Process a video from S3 with the given options"""
     logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}")
@@ -230,148 +230,149 @@ async def process_video_s3(
                 detail=f"Failed to get video URL: {str(e)}"
             )
         
-        # Create a temporary file for the video
+        # Create temporary files with unique names
         temp_video_path = f"/tmp/{uuid.uuid4()}.mp4"
+        processed_video_path = f"/tmp/{uuid.uuid4()}.mp4"
+        
         try:
-            # Download the video file
-            logger.info(f"Downloading video to {temp_video_path}")
+            # Download and preprocess the video
+            logger.info(f"Downloading and preprocessing video to {temp_video_path}")
             response = requests.get(video_url, stream=True)
             response.raise_for_status()
             
             with open(temp_video_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
-            logger.info("Video downloaded successfully")
-        except Exception as e:
-            logger.error(f"Error downloading video: {str(e)}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to download video: {str(e)}"
-            )
-        
-        # Process the video
-        logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}")
-        
-        try:
-            # Create VideoProcessor instance and process the video
-            processor = VideoProcessor()
+                    
+            # Preprocess video if it's 4K
+            video_info = FFmpegUtils.get_video_info(temp_video_path)
+            if video_info[1] > 1080:  # If height > 1080p
+                logger.info("4K video detected, preprocessing to 1080p")
+                FFmpegUtils.preprocess_video(temp_video_path, processed_video_path)
+                temp_video_path = processed_video_path
+                
+            # Process the video
+            logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}")
             
-            # Get video info using FFmpeg
             try:
-                main_width, main_height, video_duration = FFmpegUtils.get_video_info(temp_video_path)
-                logger.info(f"Video loaded successfully. Dimensions: {main_width}x{main_height}, Duration: {video_duration}")
+                # Create VideoProcessor instance and process the video
+                processor = VideoProcessor()
+                
+                # Get video info using FFmpeg
+                try:
+                    main_width, main_height, video_duration = FFmpegUtils.get_video_info(temp_video_path)
+                    logger.info(f"Video loaded successfully. Dimensions: {main_width}x{main_height}, Duration: {video_duration}")
+                except Exception as e:
+                    logger.error(f"Error getting video info: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to get video info: {str(e)}"
+                    )
+                
+                # Extract audio using FFmpeg
+                try:
+                    audio_path = f"/tmp/{uuid.uuid4()}.wav"
+                    FFmpegUtils.extract_audio(temp_video_path, audio_path)
+                    logger.info("Audio extracted successfully")
+                except Exception as e:
+                    logger.error(f"Error extracting audio: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to extract audio: {str(e)}"
+                    )
+                
+                # Generate captions
+                try:
+                    segments = processor.caption_processor.generate_captions(audio_path)
+                    logger.info(f"Generated {len(segments)} caption segments")
+                except Exception as e:
+                    logger.error(f"Error generating captions: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to generate captions: {str(e)}"
+                    )
+                
+                # Create caption clips
+                try:
+                    caption_data = processor.caption_processor.create_caption_clips(
+                        segments, 
+                        main_width,
+                        main_height,
+                        font=font,
+                        color=color,
+                        font_size=font_size
+                    )
+                    logger.info("Caption clips created successfully")
+                except Exception as e:
+                    logger.error(f"Error creating caption clips: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to create caption clips: {str(e)}"
+                    )
+                
+                # Process video using Remotion
+                try:
+                    remotion_service = RemotionService()
+                    result = await remotion_service.process_video(
+                        video_url=video_url,  # Use S3 URL instead of local file path
+                        settings={
+                            "font": font,
+                            "color": color,
+                            "font_size": font_size,
+                            "fps": 30
+                        }
+                    )
+                    logger.info("Remotion processing completed successfully")
+                except Exception as e:
+                    logger.error(f"Error in Remotion processing: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to process video with Remotion: {str(e)}"
+                    )
+                
+                # Upload the processed video to S3
+                try:
+                    output_path = result["output_path"]
+                    await s3_service.upload_file(output_path, output_key)
+                    logger.info(f"Uploaded processed video to S3: {output_key}")
+                except Exception as e:
+                    logger.error(f"Error uploading processed video: {str(e)}")
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"Failed to upload processed video: {str(e)}"
+                    )
+                
+                # Clean up temporary files
+                try:
+                    os.remove(temp_video_path)
+                    os.remove(audio_path)
+                    os.remove(output_path)
+                    logger.info("Temporary files cleaned up successfully")
+                except Exception as e:
+                    logger.warning(f"Error cleaning up temporary files: {str(e)}")
+                
+                # Return the output key
+                return {"output_key": output_key}
+                
+            except HTTPException:
+                raise
             except Exception as e:
-                logger.error(f"Error getting video info: {str(e)}")
+                logger.error(f"Error in video processing pipeline: {str(e)}")
+                logger.error(f"Stack trace: {traceback.format_exc()}")
                 raise HTTPException(
                     status_code=500,
-                    detail=f"Failed to get video info: {str(e)}"
+                    detail=f"Video processing failed: {str(e)}"
                 )
-            
-            # Extract audio using FFmpeg
-            try:
-                audio_path = f"/tmp/{uuid.uuid4()}.wav"
-                FFmpegUtils.extract_audio(temp_video_path, audio_path)
-                logger.info("Audio extracted successfully")
-            except Exception as e:
-                logger.error(f"Error extracting audio: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to extract audio: {str(e)}"
-                )
-            
-            # Generate captions
-            try:
-                segments = processor.caption_processor.generate_captions(audio_path)
-                logger.info(f"Generated {len(segments)} caption segments")
-            except Exception as e:
-                logger.error(f"Error generating captions: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to generate captions: {str(e)}"
-                )
-            
-            # Create caption clips
-            try:
-                caption_data = processor.caption_processor.create_caption_clips(
-                    segments, 
-                    main_width,
-                    main_height,
-                    font=font,
-                    color=color,
-                    font_size=font_size
-                )
-                logger.info("Caption clips created successfully")
-            except Exception as e:
-                logger.error(f"Error creating caption clips: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to create caption clips: {str(e)}"
-                )
-            
-            # Process video using Remotion
-            try:
-                remotion_service = RemotionService()
-                result = remotion_service.process_video(
-                    video_url=video_url,  # Use S3 URL instead of local file path
-                    captions=caption_data,
-                    settings={
-                        "font": font,
-                        "color": color,
-                        "fontSize": font_size,
-                        "fps": 30
-                    }
-                )
-                logger.info("Remotion processing completed successfully")
-            except Exception as e:
-                logger.error(f"Error in Remotion processing: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to process video with Remotion: {str(e)}"
-                )
-            
-            # Upload the processed video to S3
-            try:
-                output_path = result["output_path"]
-                await s3_service.upload_file(output_path, output_key)
-                logger.info(f"Uploaded processed video to S3: {output_key}")
-            except Exception as e:
-                logger.error(f"Error uploading processed video: {str(e)}")
-                raise HTTPException(
-                    status_code=500,
-                    detail=f"Failed to upload processed video: {str(e)}"
-                )
-            
-            # Clean up temporary files
-            try:
-                os.remove(temp_video_path)
-                os.remove(audio_path)
-                os.remove(output_path)
-                logger.info("Temporary files cleaned up successfully")
-            except Exception as e:
-                logger.warning(f"Error cleaning up temporary files: {str(e)}")
-            
-            # Return the output key
-            return {"output_key": output_key}
-            
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error in video processing pipeline: {str(e)}")
-            logger.error(f"Stack trace: {traceback.format_exc()}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Video processing failed: {str(e)}"
-            )
-            
-    except HTTPException:
-        raise
+                
+        finally:
+            # Cleanup temporary files
+            for path in [temp_video_path, processed_video_path]:
+                if os.path.exists(path):
+                    os.remove(path)
+                    
     except Exception as e:
-        logger.error(f"Unexpected error in process_video_s3: {str(e)}")
-        logger.error(f"Stack trace: {traceback.format_exc()}")
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unexpected error: {str(e)}"
-        )
+        logger.error(f"Error processing video: {str(e)}")
+        raise
 
 @app.get("/api/get-download-url/{key:path}")
 async def get_download_url(key: str):

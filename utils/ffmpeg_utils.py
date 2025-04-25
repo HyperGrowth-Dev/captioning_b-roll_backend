@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from typing import Tuple, Optional
+import ffmpeg
 
 # Configure logging
 logging.basicConfig(
@@ -64,17 +65,33 @@ class FFmpegUtils:
             output_path: Path to save the audio file
         """
         try:
-            # Run FFmpeg to extract audio
-            cmd = [
-                'ffmpeg',
-                '-i', video_path,
-                '-vn',  # No video
-                '-acodec', 'pcm_s16le',  # PCM 16-bit little-endian
-                '-ar', '16000',  # 16kHz sample rate
-                '-ac', '1',  # Mono audio
-                '-y',  # Overwrite output file
-                output_path
-            ]
+            # First check if the video has an audio stream
+            probe = ffmpeg.probe(video_path)
+            audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+            
+            if not audio_streams:
+                logger.warning(f"No audio stream found in video: {video_path}")
+                # Create an empty WAV file with silence
+                cmd = [
+                    'ffmpeg',
+                    '-f', 'lavfi',
+                    '-i', 'anullsrc=r=16000:cl=mono',
+                    '-t', '1',  # 1 second of silence
+                    '-y',
+                    output_path
+                ]
+            else:
+                # Run FFmpeg to extract audio
+                cmd = [
+                    'ffmpeg',
+                    '-i', video_path,
+                    '-vn',  # No video
+                    '-acodec', 'pcm_s16le',  # PCM 16-bit little-endian
+                    '-ar', '16000',  # 16kHz sample rate
+                    '-ac', '1',  # Mono audio
+                    '-y',  # Overwrite output file
+                    output_path
+                ]
             
             logger.info(f"Running FFmpeg command: {' '.join(cmd)}")
             result = subprocess.run(cmd, capture_output=True, text=True)
@@ -86,4 +103,41 @@ class FFmpegUtils:
             
         except Exception as e:
             logger.error(f"Error extracting audio: {str(e)}")
+            raise
+
+    @staticmethod
+    def preprocess_video(input_path: str, output_path: str, max_resolution: int = 1080) -> None:
+        """Preprocess video to a more manageable size while maintaining quality"""
+        try:
+            # Get video info
+            probe = ffmpeg.probe(input_path)
+            video_info = next(s for s in probe['streams'] if s['codec_type'] == 'video')
+            width = int(video_info['width'])
+            height = int(video_info['height'])
+            
+            # Calculate new dimensions maintaining aspect ratio
+            if height > max_resolution:
+                new_height = max_resolution
+                new_width = int(width * (max_resolution / height))
+            else:
+                new_width = width
+                new_height = height
+            
+            # Process video
+            stream = ffmpeg.input(input_path)
+            
+            # Split video and audio streams
+            video = stream.video.filter('scale', new_width, new_height)
+            audio = stream.audio
+            
+            # Combine streams back together
+            stream = ffmpeg.output(video, audio, output_path, 
+                                 vcodec='libx264',
+                                 acodec='aac',
+                                 video_bitrate='4M',
+                                 audio_bitrate='192k')
+            
+            ffmpeg.run(stream, overwrite_output=True)
+        except Exception as e:
+            logger.error(f"Error preprocessing video: {str(e)}")
             raise 

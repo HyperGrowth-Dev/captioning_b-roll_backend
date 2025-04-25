@@ -119,6 +119,7 @@ function ProcessingPage() {
   const [showProcessedVideo, setShowProcessedVideo] = useState(false);
   const [processingStatus, setProcessingStatus] = useState('');
   const videoRef = useRef(null);
+  const [fontSize, setFontSize] = useState(32);
 
   // Set video URL when file is received
   useEffect(() => {
@@ -185,7 +186,14 @@ function ProcessingPage() {
       const processData = await processVideo(inputKey, {
         font: selectedFont.family,
         color: selectedColor.value,
-        font_size: 24
+        font_size: fontSize,
+        caption_clips: [
+          {
+            text: "Sample caption",
+            start_time: 0,
+            end_time: 5
+          }
+        ]
       });
       console.log('Video processing initiated:', processData);
 

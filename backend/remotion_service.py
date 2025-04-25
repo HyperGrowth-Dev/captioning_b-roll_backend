@@ -1,6 +1,7 @@
 import os
 import json
 import logging
+import traceback
 from typing import List, Dict, Any
 from .remotion_local_service import RemotionLocalService
 
@@ -17,10 +18,9 @@ class RemotionService:
         self.local_service = RemotionLocalService()
         logger.info("RemotionService initialized successfully")
 
-    def process_video(
+    async def process_video(
         self,
         video_url: str,
-        captions: List[Dict[str, Any]],
         settings: Dict[str, Any]
     ) -> Dict[str, str]:
         """
@@ -28,7 +28,6 @@ class RemotionService:
         
         Args:
             video_url: URL to the input video (S3 URL)
-            captions: List of caption objects with text and timing
             settings: Video processing settings (font, color, etc.)
             
         Returns:
@@ -38,15 +37,16 @@ class RemotionService:
             logger.info(f"Starting video processing for: {video_url}")
             
             # Process video using local renderer
-            result = self.local_service.process_video(video_url, captions, settings)
+            result = await self.local_service.process_video(video_url, settings)
             
             logger.info("Video processing completed successfully")
             return result
             
         except Exception as e:
             logger.error(f"Error processing video: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
             raise
 
-    def cleanup(self, output_path: str):
+    def cleanup(self):
         """Clean up temporary files"""
-        self.local_service.cleanup(output_path) 
+        self.local_service.cleanup() 

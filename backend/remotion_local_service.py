@@ -4,9 +4,12 @@ import logging
 import subprocess
 import tempfile
 import shutil
-from typing import List, Dict, Any
+import traceback
+import asyncio
+from typing import List, Dict, Any, Optional
 from pathlib import Path
 from services.s3_service import S3Service
+from caption_processor import CaptionProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -22,9 +25,13 @@ class RemotionLocalService:
         self.remotion_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'remotion')
         self.output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
         self.s3_service = S3Service()
+        self.caption_processor = CaptionProcessor()
         
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
+        
+        # Initialize temp_dir_manager
+        self.temp_dir_manager = tempfile.TemporaryDirectory()
         
         # Validate Remotion directory exists
         if not os.path.exists(self.remotion_dir):
@@ -32,141 +39,127 @@ class RemotionLocalService:
         
         logger.info("RemotionLocalService initialized successfully")
 
-    def process_video(
-        self,
-        video_url: str,  # Changed from video_path to video_url
-        caption_clips: List[Dict[str, Any]],
-        settings: Dict[str, Any] = None
-    ) -> Dict[str, str]:
-        """
-        Process a video with captions using local Remotion rendering
-        
-        Args:
-            video_url: URL to the input video (S3 URL)
-            caption_clips: List of caption clips from CaptionProcessor
-            settings: Optional override settings for font, color, etc.
-            
-        Returns:
-            Dictionary containing the output path
-        """
+    async def process_video(self, video_url: str, settings: Dict[str, Any]) -> Dict[str, str]:
+        """Process a video with captions using Remotion"""
         try:
-            logger.info(f"Starting local video processing for: {video_url}")
+            logger.info(f"Using temporary directory for rendering: {self.temp_dir}")
             
-            # Check if the URL is already a presigned URL
-            if '?' in video_url and 'X-Amz-Signature' in video_url:
-                presigned_url = video_url
-                logger.info("Using provided presigned URL")
-            else:
-                # Extract the key from the URL if it's a full S3 URL
-                if video_url.startswith('https://'):
-                    # Extract the key from the URL
-                    key = video_url.split(f'https://{self.s3_service.bucket_name}.s3.amazonaws.com/')[-1]
-                    key = key.split('?')[0]  # Remove any query parameters
-                else:
-                    key = video_url
-                
-                # Get presigned URL for the video
-                presigned_url = self.s3_service.get_download_url(key)
-                logger.info(f"Got presigned URL for video: {presigned_url}")
+            # Extract the key from the video URL and ensure it has the uploads/ prefix
+            key = video_url.split('/')[-1].split('?')[0]
+            if not key.startswith('uploads/'):
+                key = f"uploads/{key}"
+            logger.info(f"Using S3 key: {key}")
             
-            # Create a temporary directory for this render
-            with tempfile.TemporaryDirectory() as temp_dir:
-                # Prepare input props
-                input_props = {
-                    "videoSrc": presigned_url,  # Use the presigned URL
-                    "captions": [
-                        {
-                            "text": clip["text"],
-                            "startFrame": clip["startFrame"],
-                            "endFrame": clip["endFrame"],
-                            "words": [
-                                {
-                                    "text": word["text"],
-                                    "startFrame": int(word["start"] * settings.get("fps", 30)),
-                                    "endFrame": int(word["end"] * settings.get("fps", 30))
-                                }
-                                for word in clip.get("words", [])
-                            ]
-                        }
-                        for clip in caption_clips
-                    ],
-                    "font": settings.get('font', 'Arial') if settings else 'Arial',
-                    "fontSize": settings.get('fontSize', 48) if settings else 48,
-                    "color": settings.get('color', '#ffffff') if settings else '#ffffff',
-                    "position": settings.get('position', 0.8) if settings else 0.8,
-                    "transitions": settings.get('transitions', {
-                        "type": 'fade',
-                        "duration": 15
-                    }) if settings else {"type": 'fade', "duration": 15},
-                    "highlightColor": settings.get('highlightColor', '#FFD700') if settings else '#FFD700'
-                }
-                
-                # Write input props to a temporary file
-                input_props_path = os.path.join(temp_dir, 'input_props.json')
-                with open(input_props_path, 'w') as f:
-                    json.dump(input_props, f)
-                
-                # Prepare output paths
-                temp_output_path = os.path.join(temp_dir, 'output.mp4')
-                
-                # Extract just the UUID from the video URL for the final output filename
-                if '?' in video_url:
-                    # If it's a presigned URL, get the part before the query parameters
-                    base_name = video_url.split('?')[0]
-                else:
-                    base_name = video_url
-                
-                # Extract just the UUID part
-                uuid_part = base_name.split('/')[-1].split('.')[0]
-                final_output_path = os.path.join(self.output_dir, f'processed_{uuid_part}.mp4')
-                
-                # Run Remotion render command with optimized settings
-                cmd = [
-                    'npx', 'remotion', 'render',
-                    'src/compositions/Root.tsx',
-                    'CaptionVideo',
-                    temp_output_path,
-                    '--props', input_props_path,
-                    '--concurrency', '1',  # Reduce concurrency to prevent glitches
-                    '--jpeg-quality', '100',  # Maximum quality (renamed from --quality)
-                    '--codec', 'h264',     # Use h264 codec
-                    '--crf', '18',         # High quality CRF value
-                    '--pixel-format', 'yuv420p',  # Standard pixel format
-                    '--audio-bitrate', '320k',    # High quality audio
-                    '--frames-per-second', '30'   # Match input FPS
-                ]
-                
-                logger.info(f"Running Remotion render command: {' '.join(cmd)}")
-                result = subprocess.run(
-                    cmd,
-                    cwd=self.remotion_dir,
-                    capture_output=True,
-                    text=True
-                )
-                
-                if result.returncode != 0:
-                    logger.error(f"Remotion render failed: {result.stderr}")
-                    raise RuntimeError(f"Remotion render failed: {result.stderr}")
-                
-                logger.info("Remotion render completed successfully")
-                
-                # Copy the processed video to the output directory
-                shutil.copy2(temp_output_path, final_output_path)
-                logger.info(f"Saved processed video to: {final_output_path}")
-                
-                # Return the final output path
-                return {
-                    "output_path": final_output_path
-                }
-                
+            # Download video
+            video_path = os.path.join(self.temp_dir, "input.mp4")
+            logger.info(f"Downloading video to {video_path}")
+            await self.s3_service.download_file(key, video_path)
+            
+            # Generate captions
+            logger.info("Generating captions...")
+            segments = self.caption_processor.generate_captions(video_path)
+            
+            # Create caption clips
+            logger.info("Creating caption clips...")
+            caption_clips = self.caption_processor.create_caption_clips(
+                segments,
+                settings.get("width", 1920),
+                settings.get("height", 1080),
+                font=settings.get("font", "Montserrat-Bold"),
+                color=settings.get("color", "white"),
+                font_size=settings.get("font_size", 48)
+            )
+
+            # Prepare input properties for Remotion
+            input_props = {
+                "videoSrc": video_url,
+                "captions": caption_clips,
+                "font": settings.get("font", "Montserrat-Bold"),
+                "fontSize": settings.get("font_size", 48),
+                "color": settings.get("color", "white"),
+                "position": "bottom",
+                "effect": True
+            }
+
+            # Save input properties to a temporary file
+            input_props_path = os.path.join(self.temp_dir, "input.json")
+            with open(input_props_path, "w") as f:
+                json.dump(input_props, f)
+            logger.info(f"Saved input properties to {input_props_path}")
+
+            # Set output path
+            output_path = os.path.join(self.temp_dir, "output.mp4")
+            logger.info(f"Output will be saved to {output_path}")
+
+            # Run Remotion render command
+            # First build the project
+            build_cmd = [
+                "npx", "remotion", "bundle", 
+                os.path.join(self.remotion_dir, "src", "compositions", "Root.tsx")
+            ]
+            logger.info(f"Building Remotion project with command: {' '.join(build_cmd)}")
+            build_result = subprocess.run(
+                build_cmd,
+                cwd=self.remotion_dir,
+                capture_output=True,
+                text=True
+            )
+
+            if build_result.returncode != 0:
+                error_msg = f"Remotion build failed: {build_result.stderr}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+
+            logger.info("Remotion project built successfully")
+
+            # Now run the render command
+            render_cmd = [
+                "npx", "remotion", "render",
+                os.path.join(self.remotion_dir, "src", "compositions", "Root.tsx"),
+                "CaptionVideo",
+                output_path,
+                "--props", input_props_path,
+                "--concurrency", "8",
+                "--jpeg-quality", "70",
+                "--codec", "h264",
+                "--crf", "28",
+                "--pixel-format", "yuv420p",
+                "--audio-bitrate", "128k",
+                "--frames-per-second", "24",
+                "--timeout", "300000"
+            ]
+
+            logger.info(f"Starting Remotion render with command: {' '.join(render_cmd)}")
+            result = subprocess.run(
+                render_cmd,
+                cwd=self.remotion_dir,
+                capture_output=True,
+                text=True
+            )
+
+            if result.returncode != 0:
+                error_msg = f"Remotion render failed: {result.stderr}"
+                logger.error(error_msg)
+                raise Exception(error_msg)
+
+            logger.info("Remotion render completed successfully")
+
+            # Copy the processed video to the output directory
+            final_output_path = os.path.join(self.output_dir, f"processed_{os.path.basename(output_path)}")
+            shutil.copy2(output_path, final_output_path)
+            logger.info(f"Copied processed video to {final_output_path}")
+
+            return {"output_path": final_output_path}
+
         except Exception as e:
             logger.error(f"Error processing video: {str(e)}")
             raise
 
-    def cleanup(self, output_path: str):
-        """Clean up temporary files"""
+    def cleanup(self):
+        """Clean up temporary files and directories"""
         try:
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            if hasattr(self, 'temp_dir_manager'):
+                self.temp_dir_manager.cleanup()
+                logger.info("Cleaned up temporary directory")
         except Exception as e:
-            logger.error(f"Error cleaning up files: {str(e)}") 
+            logger.error(f"Error cleaning up: {str(e)}") 

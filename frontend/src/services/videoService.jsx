@@ -54,6 +54,11 @@ export const processVideo = async (inputKey, options) => {
     formData.append('font', options.font);
     formData.append('color', options.color);
     formData.append('font_size', options.font_size);
+    
+    // Add caption clips if they exist
+    if (options.caption_clips) {
+      formData.append('caption_clips', JSON.stringify(options.caption_clips));
+    }
 
     console.log('Sending processing request to backend...');
     const { data } = await axios.post(`${API_URL}/process`, formData, {
