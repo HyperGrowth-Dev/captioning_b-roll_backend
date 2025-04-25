@@ -71,7 +71,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
           style={{
             width: '100%',
             height: '100%',
-            objectFit: 'contain',
+            objectFit: 'cover',
             position: 'absolute',
             top: 0,
             left: 0,
@@ -106,11 +106,10 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
                     width: '100%',
                     textAlign: 'center',
                     bottom: position === 'bottom' ? '10%' : '50%',
-                    padding: '0 20px',
                     fontFamily: `"${font}", sans-serif`,
-                    fontSize: fontSize,
+                    fontSize: `${fontSize * (height / 1080)}px`,
                     color: color,
-                    textShadow: '2px 2px 4px rgba(0,0,0,0.5)',
+                    textShadow: '2px 2px 4px rgba(0,0,0,0.8), -2px -2px 4px rgba(0,0,0,0.8)',
                     fontWeight: font.includes('Black') ? '900' : '700',
                     fontStyle: font.includes('Italic') ? 'italic' : 'normal',
                     zIndex: 1,
@@ -120,8 +119,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
                     transform: position === 'bottom' 
                       ? 'translateX(-50%)' 
                       : 'translate(-50%, -50%)',
-                    backgroundColor: 'rgba(0,0,0,0.3)',
-                    borderRadius: '8px',
+                    backgroundColor: 'transparent',
                     padding: '8px 16px'
                   }}
                 >
