@@ -106,9 +106,10 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
         <span
           style={{
             ...baseStyle,
-            backgroundColor: frame >= startFrame && frame <= endFrame ? '#FFFF00' : 'transparent',
+            backgroundColor: frame >= startFrame && frame <= endFrame ? '#FFD700' : 'transparent',
             color: color,
-            textShadow: '2px 2px 4px rgba(0,0,0,0.8)'
+            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+            borderRadius: '6px'
           }}
         >
           {word}
@@ -118,7 +119,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
       console.log('Using fill highlight');
       const progress = interpolate(
         frame,
-        [startFrame - 6, startFrame, endFrame, endFrame + 6],
+        [startFrame - 3, startFrame, endFrame, endFrame + 2],
         [0, 1, 1, 0],
         {
           extrapolateLeft: 'clamp',
@@ -130,7 +131,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
         <span
           style={{
             ...baseStyle,
-            color: progress > 0 ? '#FFFF00' : color,
+            color: progress > 0 ? '#FFD700' : color,
             textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
             transform: `scale(${1 + progress * 0.05})`,
             backgroundColor: 'transparent'

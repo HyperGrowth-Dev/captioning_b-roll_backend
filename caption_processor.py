@@ -16,7 +16,7 @@ class CaptionProcessor:
         logger.info(f"Loading Whisper model with fps={fps}...")
         self.model = whisper.load_model("base")
         self.max_segment_duration = 5.0  # Maximum duration for a segment in seconds
-        self.max_words_per_segment = 3  # Maximum number of words per segment
+        self.max_words_per_segment = 5  # Maximum number of words per segment
         self.fps = fps  # Initialize fps attribute
         
         # Get the absolute path to the static/fonts directory
