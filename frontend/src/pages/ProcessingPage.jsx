@@ -109,6 +109,7 @@ function ProcessingPage() {
   const [selectedFile, setSelectedFile] = useState(location.state?.file || null);
   const [selectedFont, setSelectedFont] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
+  const [highlightType, setHighlightType] = useState('background');
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoAspectRatio, setVideoAspectRatio] = useState(16/9);
   const [isFontPanelOpen, setIsFontPanelOpen] = useState(true);
@@ -120,6 +121,7 @@ function ProcessingPage() {
   const [processingStatus, setProcessingStatus] = useState('');
   const videoRef = useRef(null);
   const [fontSize, setFontSize] = useState(32);
+  const [isHighlightPanelOpen, setIsHighlightPanelOpen] = useState(false);
 
   // Set video URL when file is received
   useEffect(() => {
@@ -154,6 +156,7 @@ function ProcessingPage() {
   const handleColorSelect = (color) => {
     setSelectedColor(color);
     setIsColorPanelOpen(false);
+    setIsHighlightPanelOpen(true);
   };
 
   const toggleFontPanel = () => {
@@ -167,6 +170,16 @@ function ProcessingPage() {
     if (!selectedFont) return;
     setIsColorPanelOpen(!isColorPanelOpen);
     setIsFontPanelOpen(false);
+  };
+
+  const toggleHighlightPanel = () => {
+    if (!selectedColor) return;
+    setIsHighlightPanelOpen(!isHighlightPanelOpen);
+  };
+
+  const handleHighlightTypeSelect = (type) => {
+    setHighlightType(type);
+    setIsHighlightPanelOpen(false);
   };
 
   const handleProcessVideo = async () => {
@@ -187,6 +200,7 @@ function ProcessingPage() {
         font: selectedFont.family,
         color: selectedColor.value,
         font_size: fontSize,
+        highlight_type: highlightType,
         caption_clips: [
           {
             text: "Sample caption",
@@ -263,7 +277,7 @@ function ProcessingPage() {
               />
             ) : (
               <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-purple-200/50 text-lg">Video not found</div>
+                <div className="text-purple-200/50 text-lg">No video selected</div>
               </div>
             )}
             
@@ -481,6 +495,94 @@ function ProcessingPage() {
                           transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         />
                       ))}
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
+            {/* Highlight Type Selection Panel */}
+            <motion.div layout>
+              <motion.button
+                layout
+                onClick={toggleHighlightPanel}
+                className={`w-full p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
+                          ${selectedColor ? 'bg-purple-900/30 hover:bg-purple-800/40 cursor-pointer' : 'bg-purple-900/10 cursor-not-allowed'}`}
+                disabled={!selectedColor}
+              >
+                <motion.div layout className="flex items-center justify-between">
+                  <motion.h2 layout className="text-xl font-semibold text-purple-100">
+                    Highlight Type
+                  </motion.h2>
+                  {highlightType && (
+                    <motion.span layout className="text-sm text-purple-300">
+                      Selected: {highlightType === 'background' ? 'Background' : 'Fill'}
+                    </motion.span>
+                  )}
+                </motion.div>
+              </motion.button>
+
+              <AnimatePresence mode="wait">
+                {isHighlightPanelOpen && (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ 
+                      opacity: 1,
+                      height: 'auto',
+                      transition: {
+                        type: "spring",
+                        stiffness: 70,
+                        damping: 15
+                      }
+                    }}
+                    exit={{ 
+                      opacity: 0,
+                      height: 0,
+                      transition: {
+                        type: "spring",
+                        stiffness: 70,
+                        damping: 15
+                      }
+                    }}
+                    className="overflow-hidden"
+                  >
+                    <motion.div layout className="space-y-3 mt-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <button
+                          onClick={() => handleHighlightTypeSelect('background')}
+                          className={`p-4 rounded-xl cyber-border transition-all duration-300 ${
+                            highlightType === 'background' 
+                              ? 'bg-purple-600/50 border-purple-400' 
+                              : 'bg-purple-900/30 hover:bg-purple-800/40'
+                          }`}
+                        >
+                          <div className="text-purple-100 font-medium mb-2">Background</div>
+                          <div className="text-sm text-purple-300">
+                            <div className="space-x-1">
+                              <span>Sample</span>
+                              <span className="bg-yellow-500 px-1 rounded">Text</span>
+                            </div>
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={() => handleHighlightTypeSelect('fill')}
+                          className={`p-4 rounded-xl cyber-border transition-all duration-300 ${
+                            highlightType === 'fill' 
+                              ? 'bg-purple-600/50 border-purple-400' 
+                              : 'bg-purple-900/30 hover:bg-purple-800/40'
+                          }`}
+                        >
+                          <div className="text-purple-100 font-medium mb-2">Fill</div>
+                          <div className="text-sm text-purple-300">
+                            <div className="space-x-1">
+                              <span className="text-yellow-500">Sample</span>
+                              <span className="text-white">Text</span>
+                            </div>
+                          </div>
+                        </button>
+                      </div>
                     </motion.div>
                   </motion.div>
                 )}

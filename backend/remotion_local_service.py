@@ -50,10 +50,16 @@ class RemotionLocalService:
                 key = f"uploads/{key}"
             logger.info(f"Using S3 key: {key}")
             
-            # Download video
-            video_path = os.path.join(self.temp_dir, "input.mp4")
+            # Download video to the Remotion public directory
+            video_filename = f"input_{key.replace('/', '_')}.mp4"
+            video_path = os.path.join(self.remotion_dir, "public", video_filename)
+            os.makedirs(os.path.dirname(video_path), exist_ok=True)
+            
             logger.info(f"Downloading video to {video_path}")
             await self.s3_service.download_file(key, video_path)
+            
+            # Use the local URL for Remotion
+            local_video_url = f"/public/{video_filename}"
             
             # Generate captions
             logger.info("Generating captions...")
@@ -72,14 +78,17 @@ class RemotionLocalService:
 
             # Prepare input properties for Remotion
             input_props = {
-                "videoSrc": video_url,
+                "videoSrc": local_video_url,  # Use local URL instead of S3 URL
                 "captions": caption_clips,
                 "font": settings.get("font", "Montserrat-Bold"),
                 "fontSize": settings.get("font_size", 48),
                 "color": settings.get("color", "white"),
                 "position": "bottom",
-                "effect": True
+                "highlightType": settings.get("highlight_type", "background")
             }
+
+            logger.info(f"Highlight type from settings: {settings.get('highlight_type')}")
+            logger.info(f"Final input_props: {input_props}")
 
             # Save input properties to a temporary file
             input_props_path = os.path.join(self.temp_dir, "input.json")
@@ -168,6 +177,13 @@ class RemotionLocalService:
             final_output_path = os.path.join(self.output_dir, f"processed_{os.path.basename(output_path)}")
             shutil.copy2(output_path, final_output_path)
             logger.info(f"Copied processed video to {final_output_path}")
+
+            # Clean up the video file after rendering
+            try:
+                os.remove(video_path)
+                logger.info(f"Cleaned up temporary video file: {video_path}")
+            except Exception as e:
+                logger.warning(f"Failed to clean up video file: {str(e)}")
 
             return {"output_path": final_output_path}
 

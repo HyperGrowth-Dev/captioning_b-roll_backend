@@ -78,7 +78,8 @@ async def process_video(
     file: UploadFile = File(...),
     font: str = Form("Montserrat-Bold"),  # Default font
     color: str = Form("white"),  # Default color
-    font_size: int = Form(32)  # Default font size
+    font_size: int = Form(32),  # Default font size
+    highlight_type: str = Form("background")  # Add this line
 ):
     """Process uploaded video file"""
     try:
@@ -97,7 +98,8 @@ async def process_video(
             file_path,
             font=font,
             color=color,
-            font_size=font_size
+            font_size=font_size,
+            highlight_type=highlight_type  # Add this line
         )
         
         # Clean up uploaded file
@@ -208,10 +210,11 @@ async def process_video_s3(
     input_key: str = Form(...),
     font: str = Form(...),
     color: str = Form(...),
-    font_size: int = Form(32)
+    font_size: int = Form(32),
+    highlight_type: str = Form("background")
 ):
-    """Process a video from S3 with the given options"""
-    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}")
+    """Process a video that has been uploaded to S3"""
+    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, highlight_type={highlight_type}")
     
     try:
         # Generate a unique output key
@@ -252,7 +255,7 @@ async def process_video_s3(
                 temp_video_path = processed_video_path
                 
             # Process the video
-            logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}")
+            logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, highlight_type={highlight_type}")
             
             try:
                 # Create VideoProcessor instance and process the video
@@ -313,15 +316,13 @@ async def process_video_s3(
                 # Process video using Remotion
                 try:
                     remotion_service = RemotionService()
-                    result = await remotion_service.process_video(
-                        video_url=video_url,  # Use S3 URL instead of local file path
-                        settings={
-                            "font": font,
-                            "color": color,
-                            "font_size": font_size,
-                            "fps": 30
-                        }
-                    )
+                    settings = {
+                        "font": font,
+                        "color": color,
+                        "font_size": font_size,
+                        "highlight_type": highlight_type
+                    }
+                    output = await remotion_service.process_video(input_key, settings)
                     logger.info("Remotion processing completed successfully")
                 except Exception as e:
                     logger.error(f"Error in Remotion processing: {str(e)}")
@@ -332,8 +333,7 @@ async def process_video_s3(
                 
                 # Upload the processed video to S3
                 try:
-                    output_path = result["output_path"]
-                    await s3_service.upload_file(output_path, output_key)
+                    await s3_service.upload_file(output["output_path"], output_key)
                     logger.info(f"Uploaded processed video to S3: {output_key}")
                 except Exception as e:
                     logger.error(f"Error uploading processed video: {str(e)}")
@@ -346,7 +346,6 @@ async def process_video_s3(
                 try:
                     os.remove(temp_video_path)
                     os.remove(audio_path)
-                    os.remove(output_path)
                     logger.info("Temporary files cleaned up successfully")
                 except Exception as e:
                     logger.warning(f"Error cleaning up temporary files: {str(e)}")

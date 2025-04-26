@@ -8,17 +8,23 @@ function VideoUploader() {
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
+  const [highlightType, setHighlightType] = useState("background");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setProcessing(true);
     setError(null);
 
+    console.log('Selected highlight type:', highlightType);
+
     const formData = new FormData();
     formData.append('file', file);
     formData.append('font', font);
     formData.append('color', color);
     formData.append('font_size', fontSize);
+    formData.append('highlight_type', highlightType);
+
+    console.log('FormData highlight_type:', formData.get('highlight_type'));
 
     try {
       const response = await fetch('http://localhost:8000/process-video', {
@@ -129,6 +135,53 @@ function VideoUploader() {
               <option value="black">Black</option>
               <option value="#00FF00">Neon Green</option>
             </select>
+          </div>
+
+          {/* Highlight Type Selection */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Highlight Type
+            </label>
+            <div className="mt-2 space-y-4">
+              <div className="flex items-center space-x-3">
+                <input
+                  type="radio"
+                  id="background"
+                  name="highlightType"
+                  value="background"
+                  checked={highlightType === "background"}
+                  onChange={(e) => setHighlightType(e.target.value)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="background" className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">Background Highlight</span>
+                    <div className="px-3 py-2 bg-gray-100 rounded-md">
+                      <span className="text-gray-900">Example text</span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+              <div className="flex items-center space-x-3">
+                <input
+                  type="radio"
+                  id="fill"
+                  name="highlightType"
+                  value="fill"
+                  checked={highlightType === "fill"}
+                  onChange={(e) => setHighlightType(e.target.value)}
+                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+                />
+                <label htmlFor="fill" className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-700">Word-by-Word Highlight</span>
+                    <div className="px-3 py-2 bg-gray-100 rounded-md">
+                      <span className="text-gray-900">Example <span className="bg-yellow-300">text</span></span>
+                    </div>
+                  </div>
+                </label>
+              </div>
+            </div>
           </div>
 
           {/* Font Size Slider */}

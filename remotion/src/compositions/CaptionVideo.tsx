@@ -4,6 +4,7 @@ import { TransitionSeries } from '@remotion/transitions';
 import { slide } from '@remotion/transitions/slide';
 import { loadFonts } from '../load-fonts';
 import { z } from 'zod';
+import { interpolate, interpolateColors } from 'remotion';
 
 // Load fonts before rendering
 loadFonts();
@@ -24,32 +25,49 @@ export const CaptionVideoPropsSchema = z.object({
   fontSize: z.number(),
   color: z.string(),
   position: z.enum(['bottom', 'middle']),
-  effect: z.boolean().optional()
+  highlightType: z.enum(['background', 'fill'])
 });
 
 type CaptionVideoProps = z.infer<typeof CaptionVideoPropsSchema>;
 
-const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, fontSize, color, position, effect }) => {
-  const { width, height } = useVideoConfig();
+const CaptionVideo: React.FC<CaptionVideoProps> = ({ 
+  videoSrc, 
+  captions, 
+  font, 
+  fontSize, 
+  color, 
+  position, 
+  highlightType 
+}) => {
+  const { width, height, fps } = useVideoConfig();
   const frame = useCurrentFrame();
   const [handle] = React.useState(() => delayRender());
   const [isVideoLoaded, setIsVideoLoaded] = React.useState(false);
 
+  // Ensure videoSrc starts with a forward slash for local files
+  const normalizedVideoSrc = videoSrc.startsWith('http') 
+    ? videoSrc 
+    : videoSrc.startsWith('/') 
+      ? videoSrc 
+      : `/${videoSrc}`;
+
+  console.log('Received highlightType:', highlightType);
+
   React.useEffect(() => {
     const video = document.createElement('video');
-    video.src = videoSrc;
+    video.src = normalizedVideoSrc;
     
     // Set preload to auto to ensure the video starts loading immediately
     video.preload = 'auto';
     
     const handleLoad = () => {
-      console.log("✅ Video loaded:", videoSrc);
+      console.log("✅ Video loaded:", normalizedVideoSrc);
       setIsVideoLoaded(true);
       continueRender(handle);
     };
 
     const handleError = (event: Event | string) => {
-      console.error("❌ Failed to load video:", videoSrc, event);
+      console.error("❌ Failed to load video:", normalizedVideoSrc, event);
       setIsVideoLoaded(false);
       continueRender(handle);
     };
@@ -66,29 +84,69 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
       video.oncanplay = null;
       video.onerror = null;
     };
-  }, [videoSrc, handle]);
+  }, [normalizedVideoSrc, handle]);
 
-  const renderWord = (word: string, isHighlighted: boolean) => {
-    return (
-      <span
-        style={{
-          backgroundColor: isHighlighted ? '#FFFF00' : 'transparent',
-          padding: '2px 4px',
-          borderRadius: '4px',
-          margin: '0 2px',
-          transition: 'background-color 0.1s ease-in-out'
-        }}
-      >
-        {word}
-      </span>
-    );
+  const renderWord = (word: string, start: number, end: number) => {
+    const startFrame = Math.round(start * fps);
+    const endFrame = Math.round(end * fps);
+    
+    console.log('Current frame:', frame);
+    console.log('Word timing:', { word, startFrame, endFrame });
+    
+    const baseStyle = {
+      display: 'inline-block',
+      padding: '2px 4px',
+      margin: '0 1px',
+      transition: 'all 0.1s ease-in-out'
+    };
+
+    if (highlightType === 'background') {
+      console.log('Using background highlight');
+      return (
+        <span
+          style={{
+            ...baseStyle,
+            backgroundColor: frame >= startFrame && frame <= endFrame ? '#FFFF00' : 'transparent',
+            color: color,
+            textShadow: '2px 2px 4px rgba(0,0,0,0.8)'
+          }}
+        >
+          {word}
+        </span>
+      );
+    } else {
+      console.log('Using fill highlight');
+      const progress = interpolate(
+        frame,
+        [startFrame - 6, startFrame, endFrame, endFrame + 6],
+        [0, 1, 1, 0],
+        {
+          extrapolateLeft: 'clamp',
+          extrapolateRight: 'clamp'
+        }
+      );
+
+      return (
+        <span
+          style={{
+            ...baseStyle,
+            color: progress > 0 ? '#FFFF00' : color,
+            textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
+            transform: `scale(${1 + progress * 0.05})`,
+            backgroundColor: 'transparent'
+          }}
+        >
+          {word}
+        </span>
+      );
+    }
   };
 
   return (
     <AbsoluteFill>
       {isVideoLoaded ? (
         <Video 
-          src={videoSrc} 
+          src={normalizedVideoSrc} 
           style={{
             width: '100%',
             height: '100%',
@@ -113,10 +171,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
       )}
       <TransitionSeries>
         {captions.map((caption, index) => {
-          // Only show caption if current frame is within its time range
           if (frame >= caption.startFrame && frame <= caption.endFrame) {
-            const currentTime = frame / 30; // Convert frame to seconds (assuming 30fps)
-            
             return (
               <TransitionSeries.Sequence
                 key={index}
@@ -131,8 +186,6 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
                     bottom: position === 'bottom' ? '10%' : '50%',
                     fontFamily: `"${font}", sans-serif`,
                     fontSize: `${fontSize * (height / 1080)}px`,
-                    color: color,
-                    textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
                     fontWeight: font.includes('Black') ? '900' : '700',
                     fontStyle: font.includes('Italic') ? 'italic' : 'normal',
                     zIndex: 1,
@@ -142,24 +195,23 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({ videoSrc, captions, font, f
                     transform: position === 'bottom' 
                       ? 'translateX(-50%)' 
                       : 'translate(-50%, -50%)',
-                    backgroundColor: 'transparent',
-                    padding: '8px 16px'
+                    padding: '8px 16px',
+                    borderRadius: '8px'
                   }}
                 >
                   {caption.words ? (
-                    <div>
-                      {caption.words.map((word, wordIndex) => {
-                        const isHighlighted = currentTime >= word.start && currentTime <= word.end;
-                        return (
-                          <React.Fragment key={wordIndex}>
-                            {renderWord(word.text, isHighlighted)}
-                            {wordIndex < (caption.words?.length ?? 0) - 1 && ' '}
-                          </React.Fragment>
-                        );
-                      })}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '4px' }}>
+                      {caption.words.map((word, wordIndex) => (
+                        <React.Fragment key={wordIndex}>
+                          {renderWord(word.text, word.start, word.end)}
+                          {wordIndex < (caption.words?.length ?? 0) - 1 && ' '}
+                        </React.Fragment>
+                      ))}
                     </div>
                   ) : (
-                    caption.text
+                    <span style={{ color: color, textShadow: '2px 2px 4px rgba(0,0,0,0.8)' }}>
+                      {caption.text}
+                    </span>
                   )}
                 </div>
               </TransitionSeries.Sequence>

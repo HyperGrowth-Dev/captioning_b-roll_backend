@@ -36,7 +36,7 @@ const RemotionRoot = () => {
           fontSize: 32,
           color: "#ffffff",
           position: "bottom",
-          effect: true
+          highlightType: "background"
         }}
       />
     </>
