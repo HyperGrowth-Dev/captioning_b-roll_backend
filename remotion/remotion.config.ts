@@ -8,4 +8,15 @@ Config.setPixelFormat('yuv420p');
 Config.setAudioCodec('aac');
 Config.setAudioBitrate('128k');
 Config.setConcurrency(4);
-Config.setOutputLocation('out'); 
+Config.setOutputLocation('out');
+
+// Lambda Configuration
+Config.overrideWebpackConfig((currentConfiguration) => {
+  return {
+    ...currentConfiguration,
+    target: 'node',
+    externals: {
+      'aws-sdk': 'aws-sdk',
+    },
+  };
+}); 

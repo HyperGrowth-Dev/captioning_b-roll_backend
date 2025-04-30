@@ -1,0 +1,18 @@
+{
+  "composition": "CaptionVideo",
+  "codec": "h264",
+  "imageFormat": "jpeg",
+  "crf": 18,
+  "inputProps": {
+    "videoSrc": "",
+    "captions": [],
+    "fontFamily": "Montserrat-Bold",
+    "fontSize": 40,
+    "width": 1920,
+    "height": 1080,
+    "highlightType": "background"
+  },
+  "framesPerLambda": 1,
+  "privacy": "public",
+  "region": "us-east-2"
+} 

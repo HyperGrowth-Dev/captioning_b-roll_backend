@@ -133,7 +133,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
             ...baseStyle,
             color: progress > 0 ? '#FFD700' : color,
             textShadow: '2px 2px 4px rgba(0,0,0,0.8)',
-            transform: `scale(${1 + progress * 0.05})`,
+            transform: `scale(${1 + progress * 0.08})`,
             backgroundColor: 'transparent'
           }}
         >
@@ -184,7 +184,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
                     position: 'absolute',
                     width: '100%',
                     textAlign: 'center',
-                    bottom: position === 'bottom' ? '10%' : '50%',
+                    bottom: position === 'bottom' ? '25%' : '50%',
                     fontFamily: `"${font}", sans-serif`,
                     fontSize: `${fontSize * (height / 1080)}px`,
                     fontWeight: font.includes('Black') ? '900' : '700',
