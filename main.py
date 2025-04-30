@@ -12,6 +12,7 @@ from utils.ffmpeg_utils import FFmpegUtils
 import traceback
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -111,7 +112,7 @@ class VideoProcessor:
             logger.error(f"Error creating b-roll clip: {str(e)}")
             return None
 
-    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32):
+    async def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32):
         """Process a video file with custom font and color settings"""
         try:
             # Get video info using FFmpeg
@@ -119,6 +120,7 @@ class VideoProcessor:
             
             # Extract audio using FFmpeg
             audio_path = "temp/audio.wav"
+            os.makedirs("temp", exist_ok=True)
             FFmpegUtils.extract_audio(input_path, audio_path)
             
             # Generate captions
@@ -146,12 +148,12 @@ class VideoProcessor:
                 'fps': 30,
                 'position': 0.7,
                 'maxWidth': main_width * 0.8,
-                'highlightColor': '#FFD700'
+                'highlightColor': '#FFD700',
+                'videoUrl': input_path  # Pass the video URL to Remotion
             }
             
-            output_url = remotion_service.process_video(
+            output_url = await remotion_service.process_video(
                 input_path,
-                caption_data,
                 settings
             )
             
@@ -164,7 +166,7 @@ class VideoProcessor:
             logger.error(f"Error processing video: {str(e)}")
             raise
 
-def main():
+async def main():
     processor = VideoProcessor()
     
     # Process all videos in the input directory
@@ -173,11 +175,11 @@ def main():
         if filename.endswith(('.mp4', '.avi', '.mov')):
             input_path = os.path.join(input_dir, filename)
             print(f"\nProcessing {filename}...")
-            processor.process_video(input_path)
+            await processor.process_video(input_path)
             break  # Only process the first video
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main())
 
 def resize(clip, width=None, height=None, newsize=None):
     """Resize a video clip while maintaining aspect ratio"""

@@ -21,11 +21,14 @@ logger = logging.getLogger(__name__)
 class RemotionLocalService:
     def __init__(self):
         logger.info("Initializing RemotionLocalService")
-        self.temp_dir = tempfile.gettempdir()
-        self.remotion_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'remotion')
+        self.temp_dir = tempfile.mkdtemp()
+        self.remotion_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "remotion")
         self.output_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'output')
         self.s3_service = S3Service()
         self.caption_processor = CaptionProcessor()
+        self.bundle_path = os.path.join(self.remotion_dir, "bundle")
+        self.bundle_exists = os.path.exists(self.bundle_path)
+        logger.info(f"Remotion bundle exists: {self.bundle_exists}")
         
         # Create output directory if it doesn't exist
         os.makedirs(self.output_dir, exist_ok=True)
@@ -78,7 +81,7 @@ class RemotionLocalService:
 
             # Prepare input properties for Remotion
             input_props = {
-                "videoSrc": local_video_url,  # Use local URL instead of S3 URL
+                "videoSrc": local_video_url,
                 "captions": caption_clips,
                 "font": settings.get("font", "Montserrat-Bold"),
                 "fontSize": settings.get("font_size", 48),
@@ -100,26 +103,29 @@ class RemotionLocalService:
             output_path = os.path.join(self.temp_dir, "output.mp4")
             logger.info(f"Output will be saved to {output_path}")
 
-            # Run Remotion render command
-            # First build the project
-            build_cmd = [
-                "npx", "remotion", "bundle", 
-                os.path.join(self.remotion_dir, "src", "compositions", "Root.tsx")
-            ]
-            logger.info(f"Building Remotion project with command: {' '.join(build_cmd)}")
-            build_result = subprocess.run(
-                build_cmd,
-                cwd=self.remotion_dir,
-                capture_output=True,
-                text=True
-            )
+            # Only build the project if the bundle doesn't exist
+            if not self.bundle_exists:
+                logger.info("Building Remotion project...")
+                build_cmd = [
+                    "npx", "remotion", "bundle", 
+                    os.path.join(self.remotion_dir, "src", "compositions", "Root.tsx")
+                ]
+                build_result = subprocess.run(
+                    build_cmd,
+                    cwd=self.remotion_dir,
+                    capture_output=True,
+                    text=True
+                )
 
-            if build_result.returncode != 0:
-                error_msg = f"Remotion build failed: {build_result.stderr}"
-                logger.error(error_msg)
-                raise Exception(error_msg)
+                if build_result.returncode != 0:
+                    error_msg = f"Remotion build failed: {build_result.stderr}"
+                    logger.error(error_msg)
+                    raise Exception(error_msg)
 
-            logger.info("Remotion project built successfully")
+                self.bundle_exists = True
+                logger.info("Remotion project built successfully")
+            else:
+                logger.info("Using existing Remotion bundle")
 
             # Now run the render command
             render_cmd = [
