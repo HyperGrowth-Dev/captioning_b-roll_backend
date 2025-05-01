@@ -65,3 +65,23 @@ data = {
     "color": "rgb(106, 155, 51)",  # Orange-red
     "font_size": 44
 }
+
+## Remotion Lambda Setup and Usage
+
+1. After making any changes to the Remotion components, redeploy the site:
+```bash
+cd remotion
+npx remotion lambda sites create src/index.ts --site-name=caption-video
+```
+
+2. To render a video using Remotion Lambda:
+```bash
+npx remotion lambda render https://remotionlambda-useast2-bvf5c7h3eb.s3.us-east-2.amazonaws.com/sites/caption-video/index.html CaptionVideo
+```
+
+Note: The serve URL will be provided after running the `sites create` command. Make sure to use the URL from your deployment.
+
+Important considerations:
+- Always redeploy the site after making changes to any Remotion components
+- The serve URL is specific to your AWS deployment
+- You can add additional render options like `--concurrency` and `--frames-per-lambda` to optimize rendering
