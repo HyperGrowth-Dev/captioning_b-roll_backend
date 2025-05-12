@@ -200,14 +200,7 @@ function ProcessingPage() {
         font: selectedFont.family,
         color: selectedColor.value,
         font_size: fontSize,
-        highlight_type: highlightType,
-        caption_clips: [
-          {
-            text: "Sample caption",
-            start_time: 0,
-            end_time: 5
-          }
-        ]
+        highlight_type: highlightType
       });
       console.log('Video processing initiated:', processData);
 

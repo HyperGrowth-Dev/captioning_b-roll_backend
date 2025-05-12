@@ -109,25 +109,11 @@ class CaptionProcessor:
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return None
 
-    def create_caption_clips(self, segments: List[Dict], video_width: int, video_height: int, font: str = "Montserrat-Bold", color: str = "white", font_size: int = 32) -> List[Dict]:
-        """Create individual caption clips with word-level timing information and styling."""
-        logger.info(f"Step 1: Starting caption clip creation for {len(segments)} segments")
-        logger.debug(f"Video dimensions: {video_width}x{video_height}")
-        logger.debug(f"Font settings: {font}, {color}, {font_size}")
+    def create_caption_clips(self, segments: List[Dict], video_width: int, video_height: int, font: str = "Barlow-BlackItalic", color: str = "white", font_size: int = 32) -> List[Dict]:
+        """Create individual caption clips with word-level timing information."""
+        logger.info(f"Starting caption clip creation for {len(segments)} segments")
         
         caption_clips = []
-        
-        # Get the absolute path to the font file
-        logger.info("Step 2: Setting up font path")
-        font_path = os.path.join(self.fonts_dir, f"{font}.ttf")
-        logger.info(f"Using font path: {font_path}")
-        
-        # Check if font file exists
-        if not os.path.exists(font_path):
-            logger.warning(f"Font file not found: {font_path}")
-            # Fallback to system font
-            font_path = "/System/Library/Fonts/Helvetica.ttc"
-            logger.info(f"Falling back to: {font_path}")
         
         # Calculate text positioning based on video dimensions
         logger.info("Step 3: Calculating text positioning")
@@ -154,17 +140,7 @@ class CaptionProcessor:
                 'text': segment['text'],
                 'startFrame': int(segment['start'] * self.fps),
                 'endFrame': int(segment['end'] * self.fps),
-                'words': words,
-                'style': {
-                    'font': font_path,
-                    'color': color,
-                    'fontSize': font_size,
-                    'position': {
-                        'x': 'center',
-                        'y': text_y_position
-                    },
-                    'maxWidth': max_text_width
-                }
+                'words': words if words else None  # Only include words if there are any
             }
             logger.debug(f"Created caption clip: {caption_clip}")
             caption_clips.append(caption_clip)

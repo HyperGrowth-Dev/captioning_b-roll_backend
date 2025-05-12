@@ -66,6 +66,8 @@ data = {
     "font_size": 44
 }
 
+PYTHONPATH=$PYTHONPATH:. uvicorn backend.api:app --reload
+
 ## Remotion Lambda Setup and Usage
 
 1. After making any changes to the Remotion components, redeploy the site:

@@ -4,7 +4,7 @@ import logging
 import traceback
 from typing import List, Dict, Any
 import boto3
-from .remotion_lambda_service import RemotionLambdaService
+from services.s3_service import S3Service
 
 # Configure logging
 logging.basicConfig(
@@ -16,68 +16,78 @@ logger = logging.getLogger(__name__)
 class RemotionService:
     def __init__(self):
         logger.info("Initializing RemotionService")
-        self.lambda_service = RemotionLambdaService()
+        # Initialize services
+        self.s3_service = S3Service()
         
-        # Initialize S3 client
+        # Initialize AWS clients
         self.s3_client = boto3.client('s3')
         self.lambda_client = boto3.client('lambda')
-        self.bucket_name = 'hyper-editor'  # Your S3 bucket name
+        self.bucket_name = 'hyper-editor'
         
         # Initialize Remotion settings
         self.serve_url = "https://remotionlambda-useast2-bvf5c7h3eb.s3.us-east-2.amazonaws.com/sites/caption-video/index.html"
-        self.lambda_function_name = "remotion-render-4-0-293-mem2048mb-disk2048mb-120sec"
+        self.lambda_function_name = "remotion-render-4-0-272-mem2048mb-disk2048mb-120sec"
+        self.region = "us-east-2"
+        
+        # Lambda configuration
+        self.ram = 3009
+        self.disk = 2048
+        self.timeout = 240
         
         logger.info("RemotionService initialized successfully")
 
-    async def process_video(self, video_path: str, settings: dict) -> str:
+    async def process_video(self, video_url: str, settings: Dict[str, Any]) -> Dict[str, str]:
         """Process a video using Remotion Lambda"""
         try:
-            # Ensure the video URL is properly formatted
-            if not video_path.startswith(('http://', 'https://')):
-                # If it's a local file, upload it to S3 first
-                s3_key = f"uploads/{os.path.basename(video_path)}"
-                logger.info(f"Uploading local file to S3: {video_path} -> {s3_key}")
-                self.s3_client.upload_file(video_path, self.bucket_name, s3_key)
-                video_url = f"https://{self.bucket_name}.s3.us-east-2.amazonaws.com/{s3_key}"
-                logger.info(f"File uploaded successfully. Video URL: {video_url}")
-            else:
-                video_url = video_path
-                logger.info(f"Using provided video URL: {video_url}")
-
-            # Prepare the render request
+            # Extract the key from the video URL and ensure it has the uploads/ prefix
+            key = video_url.split('/')[-1].split('?')[0]
+            if not key.startswith('uploads/'):
+                key = f"uploads/{key}"
+            logger.info(f"Using S3 key: {key}")
+            
+            # Get the S3 URL for the video
+            video_url = f"https://{self.bucket_name}.s3.us-east-2.amazonaws.com/{key}"
+            
+            # Prepare the render request using the correct Remotion Lambda structure
             render_request = {
-                'type': 'render',
-                'serveUrl': 'https://caption-video.remotion.lambda-url.us-east-2.on.aws',
+                'type': 'start',
+                'serveUrl': self.serve_url,
                 'composition': 'CaptionVideo',
-                'outputLocation': {
-                    's3': {
-                        'bucketName': self.bucket_name,
-                        'key': f"renders/{os.path.basename(video_path)}"
-                    }
+                'inputProps': {
+                    'videoSrc': video_url,
+                    'captions': settings.get('captions', []),
+                    'font': settings.get('font', "Barlow"),
+                    'fontSize': settings.get('fontSize', 48),
+                    'color': settings.get('color', "white"),
+                    'position': settings.get('position', "bottom"),
+                    'highlightType': settings.get('highlightType', "background")
                 },
                 'codec': 'h264',
                 'imageFormat': 'jpeg',
-                'jpegQuality': 80,
-                'inputProps': {
-                    'videoSrc': video_url,
-                    'font': settings.get('font', 'Montserrat-Bold'),
-                    'color': settings.get('color', 'white'),
-                    'fontSize': settings.get('fontSize', 32),
-                    'position': settings.get('position', 0.7),
-                    'maxWidth': settings.get('maxWidth', 1536),
-                    'highlightColor': settings.get('highlightColor', '#FFD700')
+                'maxRetries': 1,
+                'privacy': 'public',
+                'framesPerLambda': 100,
+                'memorySizeInMb': self.ram,
+                'diskSizeInMb': self.disk,
+                'timeoutInSeconds': self.timeout,
+                'outputLocation': {
+                    's3': {
+                        'bucketName': self.bucket_name,
+                        'key': f"renders/{os.path.basename(key)}"
+                    }
                 }
             }
 
             # Log the request details
             logger.info(f"Processing video: {video_url}")
-            logger.info(f"Output location: s3://{self.bucket_name}/renders/{os.path.basename(video_path)}")
+            logger.info(f"Output location: s3://{self.bucket_name}/renders/{os.path.basename(key)}")
             logger.info(f"Full request payload: {json.dumps(render_request, indent=2)}")
 
-            # Invoke the Lambda function
+            # Invoke Lambda for rendering (asynchronously)
             response = self.lambda_client.invoke(
                 FunctionName=self.lambda_function_name,
-                Payload=json.dumps(render_request)
+                Payload=json.dumps(render_request),
+                InvocationType='Event'  # Changed to Event for async invocation
             )
             
             # Log response metadata
@@ -86,45 +96,42 @@ class RemotionService:
             logger.info(f"Executed Version: {response.get('ExecutedVersion', 'N/A')}")
             logger.info(f"Function Error: {response.get('FunctionError', 'None')}")
 
-            # Get and decode logs if available
-            if 'LogResult' in response:
-                import base64
-                logs = base64.b64decode(response['LogResult']).decode('utf-8')
-                logger.info("=== Lambda Execution Logs ===")
-                logger.info(logs)
-
-            # Check if we got a response
-            payload = response['Payload'].read()
-            logger.info("=== Lambda Response Payload ===")
-            logger.info(f"Raw payload: {payload}")
-            
-            if not payload:
-                raise Exception("Empty response from Remotion Lambda")
-
-            # Parse the response
-            try:
-                response_payload = json.loads(payload)
-                logger.info(f"Parsed response payload: {json.dumps(response_payload, indent=2)}")
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse Lambda response: {str(e)}. Raw response: {payload}")
-                raise Exception(f"Failed to parse Lambda response: {str(e)}. Response: {payload}")
-            
-            if 'errorMessage' in response_payload:
-                logger.error(f"Lambda function returned error: {response_payload['errorMessage']}")
-                raise Exception(f"Remotion Lambda error: {response_payload['errorMessage']}")
-
-            if 'outputUrl' not in response_payload:
-                logger.error(f"No outputUrl in response. Full response: {json.dumps(response_payload, indent=2)}")
-                raise Exception(f"No outputUrl in response. Response: {response_payload}")
-
-            logger.info(f"Successfully processed video. Output URL: {response_payload['outputUrl']}")
-            return response_payload['outputUrl']
+            # Return immediately with renderId
+            return {
+                'status': 'processing',
+                'message': 'Video processing started',
+                'renderId': os.path.basename(key)  # Use the video filename as renderId
+            }
 
         except Exception as e:
-            logger.error(f"Error processing video with Remotion: {str(e)}")
+            logger.error(f"Error processing video: {str(e)}")
             logger.error(f"Stack trace: {traceback.format_exc()}")
+            raise
+
+    async def check_progress(self, render_id: str) -> Dict[str, Any]:
+        """Check the progress of a video render"""
+        try:
+            # Check if the output file exists in S3
+            try:
+                self.s3_client.head_object(
+                    Bucket=self.bucket_name,
+                    Key=f"renders/{render_id}"
+                )
+                # If we get here, the file exists
+                return {
+                    'status': 'done',
+                    'url': f"https://{self.bucket_name}.s3.us-east-2.amazonaws.com/renders/{render_id}"
+                }
+            except self.s3_client.exceptions.ClientError as e:
+                if e.response['Error']['Code'] == '404':
+                    return {'status': 'processing'}
+                else:
+                    raise
+
+        except Exception as e:
+            logger.error(f"Error checking progress: {str(e)}")
             raise
 
     def cleanup(self):
         """Clean up temporary files"""
-        self.lambda_service.cleanup() 
+        pass 

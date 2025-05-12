@@ -43,6 +43,7 @@ frontend/node_modules/
 *.txt
 !requirements.txt
 !README.md
+node_modules/
 
 # Remotion specific
 remotion/node_modules/

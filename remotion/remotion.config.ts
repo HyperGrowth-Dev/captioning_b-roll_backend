@@ -10,6 +10,8 @@ Config.setAudioBitrate('128k');
 Config.setConcurrency(4);
 Config.setOutputLocation('out');
 
+Config.setBrowserExecutable('/usr/bin/google-chrome-stable');
+
 // Lambda Configuration
 Config.overrideWebpackConfig((currentConfiguration) => {
   return {

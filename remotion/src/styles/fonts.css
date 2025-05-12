@@ -1,0 +1,13 @@
+@font-face {
+  font-family: 'Barlow-BlackItalic';
+  src: url('../../public/fonts/Barlow-BlackItalic.ttf') format('truetype');
+  font-weight: 900;
+  font-style: italic;
+}
+
+@font-face {
+  font-family: 'Montserrat-Bold';
+  src: url('../../public/fonts/Montserrat-Bold.ttf') format('truetype');
+  font-weight: bold;
+  font-style: normal;
+} 

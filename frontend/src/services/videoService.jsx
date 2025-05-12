@@ -49,17 +49,13 @@ export const processVideo = async (inputKey, options) => {
   try {
     console.log('Starting video processing with options:', { inputKey, options });
     
+    // Create form data with individual fields
     const formData = new FormData();
     formData.append('input_key', inputKey);
     formData.append('font', options.font);
     formData.append('color', options.color);
     formData.append('font_size', options.font_size);
     formData.append('highlight_type', options.highlight_type);
-    
-    // Add caption clips if they exist
-    if (options.caption_clips) {
-      formData.append('caption_clips', JSON.stringify(options.caption_clips));
-    }
 
     console.log('Sending processing request to backend...');
     const { data } = await axios.post(`${API_URL}/process`, formData, {
@@ -69,30 +65,43 @@ export const processVideo = async (inputKey, options) => {
     });
     console.log('Processing request successful:', data);
 
-    // Get the download URL for the processed video
-    console.log('Requesting download URL for processed video...');
-    const { data: { download_url } } = await axios.get(`${API_URL}/get-download-url/${data.output_key}`);
-    console.log('Download URL received:', download_url);
+    // Poll for progress
+    let isComplete = false;
+    let downloadUrl = null;
+    
+    while (!isComplete) {
+      try {
+        const { data: progressData } = await axios.get(`${API_URL}/progress/${data.renderId}`);
+        console.log('Progress check:', progressData);
+        
+        if (progressData.status === 'done') {
+          isComplete = true;
+          downloadUrl = progressData.url;
+        } else {
+          // Wait 2 seconds before next check
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      } catch (error) {
+        console.error('Error checking progress:', error);
+        throw error;
+      }
+    }
     
     return {
-      output_key: data.output_key,
-      download_url
+      renderId: data.renderId,
+      download_url: downloadUrl
     };
   } catch (error) {
     console.error('Error processing video:', error);
     if (error.response) {
-      // The request was made and the server responded with a status code
-      // that falls out of the range of 2xx
       console.error('Error response data:', error.response.data);
       console.error('Error response status:', error.response.status);
       console.error('Error response headers:', error.response.headers);
       throw new Error(`Video processing failed: ${error.response.data.detail || error.response.data.message || 'Unknown error'}`);
     } else if (error.request) {
-      // The request was made but no response was received
       console.error('No response received:', error.request);
       throw new Error('No response received from server. Please check your connection.');
     } else {
-      // Something happened in setting up the request that triggered an Error
       console.error('Error setting up request:', error.message);
       throw new Error(`Failed to process video: ${error.message}`);
     }

@@ -1,7 +1,8 @@
 import React from 'react';
-import { AbsoluteFill, useVideoConfig, Video, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, useVideoConfig, OffthreadVideo, useCurrentFrame } from 'remotion';
 import { TransitionSeries } from '@remotion/transitions';
 import { z } from 'zod';
+import '../styles/fonts.css';
 
 export const CaptionVideoPropsSchema = z.object({
   videoSrc: z.string(),
@@ -19,7 +20,11 @@ export const CaptionVideoPropsSchema = z.object({
   fontSize: z.number(),
   color: z.string(),
   position: z.enum(['bottom', 'middle']),
-  highlightType: z.enum(['background', 'fill'])
+  highlightType: z.enum(['background', 'fill']),
+  useOffthreadVideo: z.boolean().optional(),
+  onError: z.object({
+    fallbackVideo: z.string()
+  }).optional()
 });
 
 type CaptionVideoProps = z.infer<typeof CaptionVideoPropsSchema>;
@@ -31,7 +36,9 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
   fontSize, 
   color, 
   position, 
-  highlightType 
+  highlightType,
+  useOffthreadVideo = true,
+  onError
 }) => {
   const { width, height, fps } = useVideoConfig();
   const frame = useCurrentFrame();
@@ -76,7 +83,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
 
   return (
     <AbsoluteFill>
-      <Video 
+      <OffthreadVideo 
         src={videoSrc} 
         style={{
           width: '100%',
@@ -86,6 +93,14 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
           top: 0,
           left: 0,
           backgroundColor: '#000'
+        }}
+        onError={(error) => {
+          console.error('Video playback error:', error);
+          if (onError?.fallbackVideo) {
+            // If there's a fallback video, we could switch to it here
+            // However, since this is a render, we'll just log the error
+            console.log('Using fallback video:', onError.fallbackVideo);
+          }
         }}
       />
       <TransitionSeries>
@@ -104,7 +119,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
                     width: '100%',
                     textAlign: 'center',
                     bottom: position === 'bottom' ? '10%' : '50%',
-                    fontFamily: `"${font}", sans-serif`,
+                    fontFamily: font,
                     fontSize: `${fontSize * (height / 1080)}px`,
                     fontWeight: font.includes('Black') ? '900' : '700',
                     fontStyle: font.includes('Italic') ? 'italic' : 'normal',
