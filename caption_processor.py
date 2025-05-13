@@ -121,6 +121,22 @@ class CaptionProcessor:
         max_text_width = int(video_width * 0.7)
         center_x = video_width // 2
         
+        # Calculate font size based on video dimensions
+        min_font_size = 24
+        max_font_size = 200
+        base_font_size = int(video_width * 0.07)  # 4% of video width
+        
+        # Fix: Properly calculate adjusted font size
+        adjusted_font_size = max(min_font_size, min(max_font_size, base_font_size))
+        
+        # Apply the user's font size preference as a multiplier
+        final_font_size = int(adjusted_font_size * (font_size / 48))  # 48 is the default font size
+        
+        logger.info(f"Font size calculation: base={base_font_size}, adjusted={adjusted_font_size}, final={final_font_size}")
+        
+        # Initialize font with the calculated size
+        pil_font = ImageFont.truetype(font_path, final_font_size)
+        
         for segment in segments:
             if not segment.get('words'):
                 continue
@@ -136,14 +152,12 @@ class CaptionProcessor:
                 print(f"First word timing: {segment['words'][0]['start']:.3f} - {segment['words'][0]['end']:.3f}")
             
             if text:  # Only create clips for non-empty text
-                # Calculate dimensions for both shadow and main text
-                pil_font = ImageFont.truetype(font_path, font_size)
+                # Split text into lines and calculate dimensions
                 lines = text.upper().split('\n')
                 max_line_width = 0
                 total_height = 0
                 line_heights = []
                 
-                # Calculate proper text dimensions including descenders and capital letters
                 for line in lines:
                     # Get the full text metrics
                     ascent, descent = pil_font.getmetrics()
@@ -156,12 +170,12 @@ class CaptionProcessor:
                     total_height += line_height
                 
                 # Add padding for line spacing and text height
-                line_spacing = int(font_size * 0.2)  # 20% of font size for line spacing
-                vertical_padding = int(font_size * 0.3)  # 30% of font size for top and bottom padding
+                line_spacing = int(final_font_size * 0.2)  # 20% of font size for line spacing
+                vertical_padding = int(final_font_size * 0.3)  # 30% of font size for top and bottom padding
                 total_height += (len(lines) - 1) * line_spacing + vertical_padding * 2
                 
                 # Create base image for the entire text (non-highlighted)
-                padding = int(font_size * 0.2)
+                padding = int(final_font_size * 0.2)
                 base_img = Image.new('RGBA', (max_line_width + padding * 2, 
                                             int(total_height) + padding * 2), 
                                    (0, 0, 0, 0))
@@ -230,7 +244,7 @@ class CaptionProcessor:
                                 word_y = current_y
                                 
                                 # Add padding only to top and bottom
-                                padding_y = int(font_size * 0.05)  # 5% padding on top and bottom
+                                padding_y = int(final_font_size * 0.05)  # 5% padding on top and bottom
                                 
                                 # Get exact text metrics for vertical alignment
                                 ascent, descent = pil_font.getmetrics()
