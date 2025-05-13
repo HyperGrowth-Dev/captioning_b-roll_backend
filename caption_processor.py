@@ -101,6 +101,11 @@ class CaptionProcessor:
                             shadow_blur=12, shadow_opacity=0.9,
                             highlight_color="#FFD700", highlight_enabled=True):
         """Create individual caption clips for each segment with custom font and color settings"""
+        logger.info("=== CAPTION PROCESSING DIMENSIONS ===")
+        logger.info(f"Video dimensions for captions: {video_width}x{video_height}")
+        logger.info(f"Video orientation: {'vertical' if video_height > video_width else 'horizontal'}")
+        logger.info(f"Video aspect ratio: {video_width/video_height}")
+        
         caption_clips = []
         
         # Get the absolute path to the font file

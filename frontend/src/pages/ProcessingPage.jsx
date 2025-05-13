@@ -265,6 +265,8 @@ function ProcessingPage() {
   const handleVideoLoad = () => {
     if (videoRef.current) {
       const { videoWidth, videoHeight } = videoRef.current;
+      console.log('Original video dimensions:', videoWidth, 'x', videoHeight);
+      console.log('Original video orientation:', videoHeight > videoWidth ? 'vertical' : 'horizontal');
       setVideoAspectRatio(videoWidth / videoHeight);
     }
   };
@@ -340,7 +342,20 @@ function ProcessingPage() {
       setProcessedVideoUrl(null);
       setShowProcessedVideo(false);
 
-      console.log('Starting video upload...');
+      // Get video dimensions
+      const video = document.createElement('video');
+      video.src = URL.createObjectURL(selectedFile);
+      
+      await new Promise((resolve) => {
+        video.onloadedmetadata = () => {
+          resolve();
+        };
+      });
+      
+      const trueWidth = video.videoWidth;
+      const trueHeight = video.videoHeight;
+      console.log('True video dimensions:', trueWidth, 'x', trueHeight);
+      console.log('True video orientation:', trueHeight > trueWidth ? 'vertical' : 'horizontal');
       const { key: inputKey } = await uploadVideo(selectedFile);
       console.log('Video uploaded successfully with key:', inputKey);
 
@@ -353,7 +368,9 @@ function ProcessingPage() {
         shadow_type: selectedShadowType || "none",
         shadow_color: selectedShadowColor?.value || "black",
         shadow_blur: selectedShadowBlur || 12,
-        shadow_opacity: 0.9
+        shadow_opacity: 0.9,
+        true_width: trueWidth,
+        true_height: trueHeight
       });
       console.log('Video processing initiated:', processData);
 

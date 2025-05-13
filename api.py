@@ -16,6 +16,7 @@ import logging
 from botocore.exceptions import ClientError
 import asyncio
 import boto3
+from moviepy.editor import VideoFileClip
 
 # Configure logging
 logging.basicConfig(
@@ -210,21 +211,38 @@ async def process_video_s3(
     shadow_type: str = Form("none", description="Type of shadow effect (none/blur/offset)"),
     shadow_color: str = Form("black", description="Color of the shadow"),
     shadow_blur: int = Form(12, description="Blur radius for blur shadow"),
-    shadow_opacity: float = Form(0.9, description="Opacity of the shadow")
+    shadow_opacity: float = Form(0.9, description="Opacity of the shadow"),
+    true_width: int = Form(..., description="True width of the video"),
+    true_height: int = Form(..., description="True height of the video")
 ):
     """Process a video from S3 with the given options"""
-    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, position={position}, shadow_type={shadow_type}, shadow_color={shadow_color}, shadow_blur={shadow_blur}, shadow_opacity={shadow_opacity}")
-    
     try:
         # Generate a unique output key
         process_id = str(uuid.uuid4())
         output_key = f"processed/{process_id}/video.mp4"
         logger.info(f"Generated output key: {output_key}")
         
+        # Create inputs directory if it doesn't exist
+        os.makedirs("input", exist_ok=True)
+        
         # Download the video from S3
         local_input_path = f"/tmp/{uuid.uuid4()}.mp4"
         logger.info(f"Downloading video from S3 to {local_input_path}")
         await s3_service.download_file(input_key, local_input_path)
+        
+        
+        # Add detailed video dimension logging
+        video = VideoFileClip(local_input_path, target_resolution=(true_height, true_width))
+        logger.info("=== BACKEND INITIAL VIDEO DIMENSIONS ===")
+        logger.info(f"Initial video dimensions: {video.w}x{video.h}")
+        logger.info(f"Initial video orientation: {'vertical' if video.h > video.w else 'horizontal'}")
+        logger.info(f"Initial aspect ratio: {video.w/video.h}")
+        video.close()
+
+                # Create a copy in the input directory
+        input_copy_path = os.path.join("input", f"{process_id}_input.mp4")
+        logger.info(f"Creating copy in input directory: {input_copy_path}")
+        shutil.copy2(local_input_path, input_copy_path)
         
         # Process the video
         logger.info(f"Processing video with options: font={font}, color={color}, font_size={font_size}, position={position}, shadow_type={shadow_type}, shadow_color={shadow_color}, shadow_blur={shadow_blur}, shadow_opacity={shadow_opacity}")
@@ -240,7 +258,9 @@ async def process_video_s3(
             shadow_type=shadow_type,
             shadow_color=shadow_color,
             shadow_blur=shadow_blur,
-            shadow_opacity=shadow_opacity
+            shadow_opacity=shadow_opacity,
+            true_width=true_width,
+            true_height=true_height
         )
         
         # Upload the processed video to S3

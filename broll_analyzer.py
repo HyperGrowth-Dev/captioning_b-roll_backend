@@ -202,6 +202,7 @@ class BrollAnalyzer:
                 continue
         
         logger.info(f"Successfully processed {len(final_suggestions)} b-roll suggestions")
+        logger.info(f"Target aspect ratio: {video_width/video_height if video_width and video_height else 'N/A'}")
         return final_suggestions
 
     def search_broll(self, keyword: str, duration: float, orientation: str = "horizontal", target_width: int = None, target_height: int = None) -> List[Dict]:

@@ -38,6 +38,8 @@ export const processVideo = async (inputKey, options) => {
     formData.append('shadow_color', options.shadow_color || "black");
     formData.append('shadow_blur', options.shadow_blur || 12);
     formData.append('shadow_opacity', options.shadow_opacity || 0.9);
+    formData.append('true_width', options.true_width);
+    formData.append('true_height', options.true_height);
 
     const { data } = await axios.post(`${API_URL}/process`, formData, {
       headers: {

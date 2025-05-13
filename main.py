@@ -92,11 +92,11 @@ class VideoProcessor:
             logger.error(f"Error downloading b-roll video: {str(e)}")
             return None
 
-    def create_broll_clip(self, video_path, duration=5.0, transition_duration=0.2):
+    def create_broll_clip(self, video_path, duration=5.0, transition_duration=0.2, true_height=None, true_width=None):
         """Create a b-roll clip with transitions"""
         try:
             # Load the b-roll video
-            broll = VideoFileClip(video_path)
+            broll = VideoFileClip(video_path, target_resolution=(true_height, true_width))
             
             # Trim to desired duration
             broll = broll.subclip(0, min(duration, broll.duration))
@@ -111,13 +111,22 @@ class VideoProcessor:
             return None
 
     def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32, position=0.7, 
-                     shadow_type="none", shadow_color="black", shadow_blur=8, shadow_opacity=0.9):
+                     shadow_type="none", shadow_color="black", shadow_blur=8, shadow_opacity=0.9,
+                     true_width=None, true_height=None):
         """Process a video file with custom font and color settings"""
         try:
             # Load video
-            video = VideoFileClip(input_path)
-            main_width, main_height = video.w, video.h
+            video = VideoFileClip(input_path, target_resolution=(true_height, true_width))
+            
+            # Use true dimensions if provided, otherwise use video's dimensions
+            main_width = true_width 
+            main_height = true_height
             video_duration = video.duration
+            
+            logger.info("=== VIDEO PROCESSING DIMENSIONS ===")
+            logger.info(f"Main video dimensions: {main_width}x{main_height}")
+            logger.info(f"Main video orientation: {'vertical' if main_height > main_width else 'horizontal'}")
+            logger.info(f"Main video aspect ratio: {main_width/main_height}")
             
             # Extract audio
             audio = video.audio
@@ -188,18 +197,27 @@ class VideoProcessor:
                             broll_clip = self.create_broll_clip(
                                 broll_path,
                                 duration=duration,
-                                transition_duration=0.2  # Quick transitions
+                                transition_duration=0.2,  # Quick transitions
+                                true_height=true_height,
+                                true_width=true_width
                             )
                             
                             if broll_clip:
-                                # Resize b-roll to match main video dimensions
-                                broll_clip = resize(broll_clip, width=main_width, height=main_height)
+                                # Check if b-roll orientation matches main video
+                                broll_orientation = 'vertical' if broll_clip.h > broll_clip.w else 'horizontal'
+                                main_orientation = 'vertical' if main_height > main_width else 'horizontal'
                                 
-                                # Set the start time for the b-roll clip
-                                broll_clip = broll_clip.set_start(timestamp)
-                                
-                                # Add b-roll clip to the list with z_index
-                                all_clips.append((broll_clip, 1))  # B-roll clip with z_index 1
+                                if broll_orientation == main_orientation:
+                                    # Resize b-roll to match main video dimensions
+                                    broll_clip = resize(broll_clip, width=main_width, height=main_height)
+                                    
+                                    # Set the start time for the b-roll clip
+                                    broll_clip = broll_clip.set_start(timestamp)
+                                    
+                                    # Add b-roll clip to the list with z_index
+                                    all_clips.append((broll_clip, 1))  # B-roll clip with z_index 1
+                                else:
+                                    logger.warning(f"Skipping b-roll with mismatched orientation: {broll_orientation} vs {main_orientation}")
             
             # Create the final composite video with z_index
             final_video = CompositeVideoClip(
@@ -217,13 +235,20 @@ class VideoProcessor:
                 codec='libx264',
                 audio_codec='aac',
                 temp_audiofile='temp/temp-audio.m4a',
-                remove_temp=True
+                remove_temp=True,
+                ffmpeg_params=['-aspect', '0.5625549370055669']
             )
             
             # Clean up
             video.close()
             final_video.close()
             os.remove(audio_path)
+            
+            # Log final output dimensions
+            logger.info("=== FINAL OUTPUT DIMENSIONS ===")
+            logger.info(f"Final video dimensions: {final_video.w}x{final_video.h}")
+            logger.info(f"Final video orientation: {'vertical' if final_video.h > final_video.w else 'horizontal'}")
+            logger.info(f"Final aspect ratio: {final_video.w/final_video.h}")
             
             return output_path
             
@@ -254,7 +279,17 @@ def resize(clip, width=None, height=None, newsize=None):
         target_width, target_height = width, height
     
     def resizer(pic, target_size):
+        # Convert to PIL Image
         pilim = Image.fromarray(pic)
+        
+        # Convert RGBA to RGB if necessary
+        if pilim.mode == 'RGBA':
+            # Create a white background
+            background = Image.new('RGB', pilim.size, (255, 255, 255))
+            # Paste the RGBA image onto the white background
+            background.paste(pilim, mask=pilim.split()[3])  # 3 is the alpha channel
+            pilim = background
+        
         original_width, original_height = pilim.size
         
         # Calculate aspect ratios
@@ -274,8 +309,8 @@ def resize(clip, width=None, height=None, newsize=None):
         # Resize the image
         resized_pil = pilim.resize((new_width, new_height), Image.LANCZOS)
         
-        # Create a new image with the target size and paste the resized image in the center
-        new_im = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+        # Create a new image with white background
+        new_im = Image.new('RGB', (target_width, target_height), (255, 255, 255))
         paste_x = (target_width - new_width) // 2
         paste_y = (target_height - new_height) // 2
         new_im.paste(resized_pil, (paste_x, paste_y))
