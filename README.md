@@ -65,3 +65,13 @@ data = {
     "color": "rgb(106, 155, 51)",  # Orange-red
     "font_size": 44
 }
+
+## Deploying to EC2 Commands
+
+```bash
+ssh -i "hyper-key.pem" ubuntu@ec2-18-224-63-78.us-east-2.compute.amazonaws.com
+```
+
+```bash
+cd /var/www/vid_editor
+```
