@@ -73,9 +73,10 @@ PYTHONPATH=$PYTHONPATH:. uvicorn backend.api:app --reload
 1. After making any changes to the Remotion components, redeploy the site:
 ```bash
 cd remotion
+npx remotion lambda functions deploy
 npx remotion lambda sites create src/index.ts --site-name=caption-video
 ```
-
+n
 2. To render a video using Remotion Lambda:
 ```bash
 npx remotion lambda render https://remotionlambda-useast2-bvf5c7h3eb.s3.us-east-2.amazonaws.com/sites/caption-video/index.html CaptionVideo

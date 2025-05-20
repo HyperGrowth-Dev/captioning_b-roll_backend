@@ -1,4 +1,4 @@
-import { loadFont } from "@remotion/google-fonts/Barlow";
+import { loadFont as loadBarlow } from "@remotion/google-fonts/Barlow";
 import { loadFont as loadMontserrat } from "@remotion/google-fonts/Montserrat";
 import { continueRender, delayRender } from "remotion";
 import { useEffect, useState } from "react";
@@ -12,7 +12,7 @@ export const FontLoader: React.FC<{
     const loadFonts = async () => {
       await Promise.all([
         // Load Barlow font family
-        loadFont("normal", {
+        loadBarlow("normal", {
           weights: ["900"]
         }),
         // Load Montserrat as fallback

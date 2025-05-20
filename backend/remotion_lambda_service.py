@@ -17,7 +17,7 @@ class RemotionLambdaService:
         self.lambda_client = boto3.client('lambda')
         self.s3_client = boto3.client('s3')
         self.bucket_name = 'hyper-editor'
-        self.lambda_function_name = "remotion-render-4-0-272-mem2048mb-disk2048mb-120sec"
+        self.lambda_function_name = "remotion-render-4-0-273-mem2048mb-disk2048mb-120sec"
         self.serve_url = "https://remotionlambda-useast2-bvf5c7h3eb.s3.us-east-2.amazonaws.com/sites/caption-video/index.html"
         self.region = "us-east-2"
         
@@ -59,7 +59,7 @@ class RemotionLambdaService:
                 'outputLocation': {
                     's3': {
                         'bucketName': self.bucket_name,
-                        'key': f"renders/{os.path.basename(video_key)}"
+                        'key': f"processed/{os.path.basename(video_key)}"
                     }
                 }
             }

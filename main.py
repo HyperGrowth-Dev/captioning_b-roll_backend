@@ -13,6 +13,7 @@ import traceback
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 import asyncio
+from backend.services.remotion_service import RemotionService
 
 # Load environment variables
 load_dotenv()
@@ -137,7 +138,6 @@ class VideoProcessor:
             )
             
             # Initialize RemotionService
-            from backend.remotion_service import RemotionService
             remotion_service = RemotionService()
             
             # Process video with Remotion

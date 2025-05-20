@@ -6,7 +6,7 @@ import logging
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from backend.remotion_service import RemotionService
+from backend.services.remotion_service import RemotionService
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

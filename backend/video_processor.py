@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from .remotion_service import RemotionService
+from backend.services.remotion_service import RemotionService
 
 class VideoProcessor:
     def __init__(self):

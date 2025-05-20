@@ -182,9 +182,6 @@ async def process_video(
     font_size: int = Form(32),
     highlight_type: str = Form("background")
 ):
-    """Process a video that has been uploaded to S3"""
-    logger.info(f"Processing video request received with options: input_key={input_key}, font={font}, color={color}, font_size={font_size}, highlight_type={highlight_type}")
-    
     try:
         # Get the S3 URL for the input video
         try:
@@ -205,18 +202,12 @@ async def process_video(
             "highlightType": highlight_type,
             "captions": []  # We'll add captions later if needed
         }
+        logger.info("right before process video")
+        # Generate output key from input key
+        output_key = f"processed/{os.path.basename(input_key)}"
+        result = remotion_service.process_video(video_url, output_key, settings.get("captions", []))
         
-        result = await remotion_service.process_video(video_url, settings)
-        
-        # Return the renderId to the frontend
-        return JSONResponse(
-            status_code=202,
-            content={
-                'status': 'processing',
-                'message': 'Video processing started',
-                'renderId': result['renderId']
-            }
-        )
+        return JSONResponse(content=result)
 
     except Exception as e:
         logger.error(f"Error processing video: {str(e)}")
@@ -225,7 +216,7 @@ async def process_video(
 @app.get("/api/progress/{render_id}")
 async def check_progress(render_id: str):
     try:
-        result = await remotion_service.check_progress(render_id)
+        result = remotion_service.check_progress(render_id)
         return result
     except Exception as e:
         logger.error(f"Error checking progress: {str(e)}")

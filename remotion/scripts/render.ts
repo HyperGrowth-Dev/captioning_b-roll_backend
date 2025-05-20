@@ -25,6 +25,9 @@ const renderVideo = async () => {
     if (functions.length === 0) {
       throw new Error('No compatible Remotion Lambda functions found');
     }
+    else {
+      console.log(functions);
+    }
 
     if (!process.env.REMOTION_SERVE_URL) {
       throw new Error('REMOTION_SERVE_URL environment variable is required');
@@ -40,13 +43,13 @@ const renderVideo = async () => {
       serveUrl: process.env.REMOTION_SERVE_URL,
       composition: 'CaptionVideo',
       inputProps: {
-        videoSrc,
-        captions: [],  // Empty captions for now
-        font: "Barlow",
-        fontSize: 48,
-        color: "white",
-        position: "bottom",
-        highlightType: "background"
+        videoSrc
+        // captions: [],  // Empty captions for now
+        // font: "Barlow",
+        // fontSize: 48,
+        // color: "white",
+        // position: "bottom",
+        // highlightType: "background"
       },
       codec: 'h264',
       imageFormat: 'jpeg',
@@ -84,10 +87,11 @@ const renderVideo = async () => {
         process.exit(1);
       }
     }
-  } catch (err) {
+  } catch (err: unknown) {
+    const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
     console.error(JSON.stringify({
       status: 'error',
-      message: err.message
+      message: errorMessage
     }));
     process.exit(1);
   }

@@ -6,7 +6,7 @@ import {
   const main = async () => {
     const render = await renderMediaOnLambda({
       serveUrl: 'https://remotionlambda-useast2-bvf5c7h3eb.s3.us-east-2.amazonaws.com/sites/caption-video/index.html',
-      functionName: 'remotion-render-4-0-272-mem2048mb-disk2048mb-120sec',
+      functionName: 'remotion-render-4-0-273-mem2048mb-disk2048mb-120sec',
       composition: 'CaptionVideo',
       inputProps: {
         videoSrc: 'https://hyper-editor.s3.us-east-2.amazonaws.com/input/292edd91-b232-41c7-8c79-c054c5193af3.mp4',
@@ -36,7 +36,7 @@ import {
     let done = false;
     while (!done) {
       const progress = await getRenderProgress({
-        functionName: 'remotion-render-4-0-272-mem2048mb-disk2048mb-120sec',
+        functionName: 'remotion-render-4-0-273-mem2048mb-disk2048mb-120sec',
         renderId: render.renderId,
         bucketName: render.bucketName
       });
