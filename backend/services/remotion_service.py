@@ -32,45 +32,67 @@ class RemotionService:
                 image_format=ValidStillImageFormats.JPEG,
                 input_props={
                     'videoSrc': video_url,
-                    'hi': 'there'
+                    'captions': [
+                        {
+                            'text': 'hello how are you',
+                            'startFrame': 0,
+                            'endFrame': 90
+                        }
+                    ]
                 },
                 out_name=output_key
             )
-
-            # Start the render
+            logger.info("starting render")
+            # Start the render - this returns immediately
             render_response = self.client.render_media_on_lambda(render_params)
+            logger.info(f"Render response: {render_response}")
             
             if not render_response:
                 raise Exception("Failed to start render")
 
-            # Poll for progress
+            # Store the bucket name for later use
+            self.bucket_name = render_response.bucket_name
+
+            # Return immediately with the render ID
+            return {
+                'status': 'processing',
+                'renderId': render_response.render_id,
+                'bucketName': render_response.bucket_name
+            }
+
+        except Exception as e:
+            logger.error(f"Error processing video: {str(e)}")
+            logger.error(f"Stack trace: {e.__traceback__}")
+            raise
+
+    def check_progress(self, render_id: str) -> Dict[str, Any]:
+        """Check the progress of a video render"""
+        try:
+            # Get the render status from Remotion
             progress_response = self.client.get_render_progress(
-                render_id=render_response.render_id,
-                bucket_name=render_response.bucket_name
+                render_id=render_id,
+                bucket_name=self.bucket_name
             )
-
-            while progress_response and not progress_response.done:
-                logger.info(f"Overall progress: {progress_response.overallProgress * 100}%")
-                progress_response = self.client.get_render_progress(
-                    render_id=render_response.render_id,
-                    bucket_name=render_response.bucket_name
-                )
-
+            
             if progress_response.done:
                 return {
                     'status': 'done',
                     'message': 'Video processing complete',
                     'url': progress_response.outputFile
                 }
-            else:
+            elif progress_response.fatalErrorEncountered:
                 return {
                     'status': 'failed',
-                    'message': 'Video processing failed'
+                    'message': f'Video processing failed: {progress_response.errors}'
                 }
-
+            else:
+                return {
+                    'status': 'processing',
+                    'message': 'Video is being processed',
+                    'progress': progress_response.overallProgress
+                }
         except Exception as e:
-            logger.error(f"Error processing video: {str(e)}")
-            logger.error(f"Stack trace: {e.__traceback__}")
+            logger.error(f"Error checking progress: {str(e)}")
             raise
 
     def cleanup(self):

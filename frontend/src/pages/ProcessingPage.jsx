@@ -204,14 +204,8 @@ function ProcessingPage() {
       });
       console.log('Video processing initiated:', processData);
 
-      // Step 3: Poll for processed video
-      console.log('Waiting for processed video...');
-      setProcessingStatus('Waiting for video to be ready...');
-      const downloadUrl = await downloadProcessedVideo(processData.output_key);
-      console.log('Successfully got download URL:', downloadUrl);
-
-      // Navigate to results
-      navigate('/results', { state: { downloadUrl } });
+      // Navigate to results with the Remotion URL
+      navigate('/results', { state: { downloadUrl: processData.download_url } });
     } catch (error) {
       console.error('Error processing video:', error);
       setProcessingError(error.message || 'Failed to process video');
