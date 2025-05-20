@@ -6,10 +6,12 @@ import json
 import logging
 from backend.services.remotion_service import RemotionService
 from backend.services.s3_service import S3Service
+from utils.ffmpeg_utils import FFmpegUtils
 import os
 import uuid
 from pydantic import BaseModel
 import traceback
+from caption_processor import CaptionProcessor
 
 # Configure logging
 logging.basicConfig(
@@ -193,19 +195,43 @@ async def process_video(
                 status_code=500,
                 detail=f"Failed to get video URL: {str(e)}"
             )
+        # Download video to temp directory
+        temp_dir = "temp"
+        os.makedirs(temp_dir, exist_ok=True)
+        video_path = os.path.join(temp_dir, f"{input_key}.mp4")
+        await s3_service.download_file(input_key, video_path)
+
+        # Extract audio
+        audio_path = os.path.join(temp_dir, f"{input_key}.wav")
+        FFmpegUtils.extract_audio(video_path, audio_path)
+
+        # Generate captions
+        caption_processor = CaptionProcessor()
+        segments = caption_processor.generate_captions(audio_path)
+        
+        if not segments:
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to generate captions"
+            )
+
+        # Create caption clips
+        caption_clips = caption_processor.create_caption_clips(
+            segments,
+            video_width=1920,  # Default width
+            video_height=1080,  # Default height
+            font=font,
+            color=color,
+            font_size=font_size
+        )
 
         # Process video using Remotion
-        settings = {
-            "font": font,
-            "color": color,
-            "fontSize": font_size,
-            "highlightType": highlight_type,
-            "captions": []  # We'll add captions later if needed
-        }
-        logger.info("right before process video")
-        # Generate output key from input key
         output_key = f"processed/{os.path.basename(input_key)}"
-        result = remotion_service.process_video(video_url, output_key, settings.get("captions", []))
+        result = remotion_service.process_video(video_url, output_key, caption_clips)
+        
+        # Clean up temporary files
+        os.remove(video_path)
+        os.remove(audio_path)
         
         return JSONResponse(content=result)
 

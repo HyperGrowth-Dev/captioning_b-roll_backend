@@ -43,6 +43,17 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
   const { width, height, fps } = useVideoConfig();
   const frame = useCurrentFrame();
 
+  // Add debug logging
+  console.log('CaptionVideo props:', {
+    videoSrc,
+    captions,
+    font,
+    fontSize,
+    color,
+    position,
+    highlightType
+  });
+
   const renderWord = (word: string, start: number, end: number) => {
     const currentTime = frame / fps;
     const isHighlighted = currentTime >= start && currentTime <= end;

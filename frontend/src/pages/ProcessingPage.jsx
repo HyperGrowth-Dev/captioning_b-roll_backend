@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { uploadVideo, processVideo, downloadProcessedVideo } from '../services/videoService';
+import { uploadVideo, processVideo } from '../services/videoService';
 import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';

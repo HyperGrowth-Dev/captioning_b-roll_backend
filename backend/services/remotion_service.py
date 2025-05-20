@@ -3,6 +3,7 @@ import logging
 from remotion_lambda import RemotionClient, RenderMediaParams, Privacy, ValidStillImageFormats
 from dotenv import load_dotenv
 from typing import Dict, Any
+import json
 
 load_dotenv()
 
@@ -25,6 +26,21 @@ class RemotionService:
 
     def process_video(self, video_url: str, output_key: str, captions: list = None) -> dict:
         try:
+            # Convert captions to Remotion format if provided
+            remotion_captions = None
+            if captions:
+                logger.info(f"Converting {len(captions)} captions to Remotion format")
+                remotion_captions = [
+                    {
+                        "text": caption["text"],
+                        "startFrame": caption["startFrame"],  # Already in frames
+                        "endFrame": caption["endFrame"],      # Already in frames
+                        "words": caption.get("words", None)   # Include word-level timing if available
+                    }
+                    for caption in captions
+                ]
+                logger.info(f"Converted captions: {json.dumps(remotion_captions, indent=2)}")
+
             # Set render request parameters
             render_params = RenderMediaParams(
                 composition="CaptionVideo",
@@ -32,13 +48,12 @@ class RemotionService:
                 image_format=ValidStillImageFormats.JPEG,
                 input_props={
                     'videoSrc': video_url,
-                    'captions': [
-                        {
-                            'text': 'hello how are you',
-                            'startFrame': 0,
-                            'endFrame': 90
-                        }
-                    ]
+                    'captions': remotion_captions or [],
+                    'font': 'Barlow-BlackItalic',  # Default font
+                    'fontSize': 48,  # Default font size
+                    'color': 'white',  # Default color
+                    'position': 'bottom',  # Default position
+                    'highlightType': 'background'  # Default highlight type
                 },
                 out_name=output_key
             )
