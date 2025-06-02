@@ -283,14 +283,14 @@ class BrollAnalyzer:
                         ratio_diff = abs(target_ratio - video_ratio)
                         
                         # Skip if aspect ratio is too different
-                        if ratio_diff > 0.3:  # Allow 30% difference in aspect ratio
+                        if ratio_diff > 0.5:  # Allow 50% difference in aspect ratio
                             logger.debug(f"Skipping video {i+1}: aspect ratio too different (target={target_ratio:.2f}, video={video_ratio:.2f})")
                             continue
                         
                         # Skip if dimensions are too different
                         width_diff = abs(width - target_width) / target_width
                         height_diff = abs(height - target_height) / target_height
-                        if width_diff > 0.3 or height_diff > 0.3:  # Allow 30% difference in dimensions
+                        if width_diff > 0.5 or height_diff > 0.5:  # Allow 50% difference in dimensions
                             logger.debug(f"Skipping video {i+1}: dimensions too different (target={target_width}x{target_height}, video={width}x{height})")
                             continue
                     

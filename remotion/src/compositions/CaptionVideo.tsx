@@ -116,7 +116,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
         transitionDuration: clip.transitionDuration
       });
       
-      const transitionDuration = clip.transitionDuration || 15; // Default 0.5s transition at 30fps
+      const transitionDuration = clip.transitionDuration || 8; // Default 0.27s transition at 30fps
       const startFrame = clip.startFrame;
       const endFrame = clip.endFrame;
       
@@ -211,54 +211,11 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
             }}
             onError={(error) => {
               console.error('B-roll video error:', error);
+              console.error('B-roll URL:', currentVideo.brollUrl);
             }}
           />
         </div>
       )}
-
-      {/* Debug overlay for B-roll state */}
-      {(currentVideo.type === 'broll' || currentVideo.type === 'transition') && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            width: '100%',
-            height: 40,
-            background: currentVideo.type === 'broll' ? 'rgba(0,255,0,0.5)' : 'rgba(255,165,0,0.5)',
-            color: '#000',
-            fontWeight: 'bold',
-            fontSize: 24,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 1000
-          }}
-        >
-          {currentVideo.type === 'broll' ? 'B-ROLL ACTIVE' : 'B-ROLL TRANSITION'}
-        </div>
-      )}
-
-      {/* Always visible debug overlay */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: 40,
-          background: 'rgba(0,0,0,0.7)',
-          color: '#fff',
-          fontWeight: 'bold',
-          fontSize: 16,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 1000
-        }}
-      >
-        Frame: {frame} | State: {currentVideo.type}
-      </div>
 
       {/* Captions (always on top) */}
       <TransitionSeries>

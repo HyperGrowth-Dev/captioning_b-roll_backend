@@ -76,11 +76,11 @@ class RemotionService:
                 for suggestion in broll_suggestions:
                     if suggestion['broll_options']:
                         broll_option = suggestion['broll_options'][0]
-                        # Allow for some difference in dimensions (30%)
+                        # Allow for some difference in dimensions (50%)
                         width_diff = abs(broll_option.get('width', 0) - main_width) / main_width
                         height_diff = abs(broll_option.get('height', 0) - main_height) / main_height
                         
-                        if width_diff > 0.3 or height_diff > 0.3:
+                        if width_diff > 0.5 or height_diff > 0.5:
                             logger.warning(f"B-roll clip dimensions ({broll_option.get('width')}x{broll_option.get('height')}) too different from main video ({main_width}x{main_height})")
                             continue
                             
@@ -88,7 +88,7 @@ class RemotionService:
                             'url': broll_option['url'],
                             'startFrame': int(suggestion['timestamp'] * 30),  # Convert seconds to frames at 30fps
                             'endFrame': int((suggestion['timestamp'] + suggestion['duration']) * 30),  # Convert seconds to frames at 30fps
-                            'transitionDuration': 15  # 0.5 seconds at 30fps
+                            'transitionDuration': 8  # 0.27 seconds at 30fps
                         }
                         logger.info(f"Added b-roll clip with timing: start={broll_clip['startFrame']} frames ({broll_clip['startFrame']/30:.2f}s), end={broll_clip['endFrame']} frames ({broll_clip['endFrame']/30:.2f}s)")
                         broll_clips.append(broll_clip)
