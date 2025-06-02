@@ -3,11 +3,7 @@ import logging
 import os
 from typing import List, Dict
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Get logger
 logger = logging.getLogger(__name__)
 
 class CaptionProcessor:

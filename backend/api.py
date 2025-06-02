@@ -13,12 +13,23 @@ from pydantic import BaseModel
 import traceback
 from caption_processor import CaptionProcessor
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Initialize logger
 logger = logging.getLogger(__name__)
+
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),  # Console handler
+        logging.FileHandler('app.log')  # File handler
+    ]
+)
+
+# Set specific loggers to appropriate levels
+logging.getLogger('boto3').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 app = FastAPI()
 
@@ -182,7 +193,8 @@ async def process_video(
     font: str = Form(...),
     color: str = Form(...),
     font_size: int = Form(32),
-    highlight_type: str = Form("background")
+    highlight_type: str = Form("background"),
+    broll_enabled: bool = Form(True)
 ):
     try:
         # Get the S3 URL for the input video
@@ -227,7 +239,7 @@ async def process_video(
 
         # Process video using Remotion
         output_key = f"processed/{os.path.basename(input_key)}"
-        result = remotion_service.process_video(video_url, output_key, caption_clips)
+        result = remotion_service.process_video(video_url, output_key, caption_clips, broll_enabled=broll_enabled)
         
         # Clean up temporary files
         os.remove(video_path)

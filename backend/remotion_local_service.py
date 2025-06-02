@@ -11,11 +11,7 @@ from pathlib import Path
 from services.s3_service import S3Service
 from caption_processor import CaptionProcessor
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Get logger
 logger = logging.getLogger(__name__)
 
 class RemotionLocalService:

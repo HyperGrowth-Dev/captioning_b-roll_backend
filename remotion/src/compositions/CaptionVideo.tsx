@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, useVideoConfig, OffthreadVideo, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, useVideoConfig, OffthreadVideo, useCurrentFrame, interpolate } from 'remotion';
 import { TransitionSeries } from '@remotion/transitions';
 import { z } from 'zod';
 import '../styles/fonts.css';
@@ -16,6 +16,12 @@ export const CaptionVideoPropsSchema = z.object({
       end: z.number()
     })).optional()
   })),
+  brollClips: z.array(z.object({
+    url: z.string(),
+    startFrame: z.number(),
+    endFrame: z.number(),
+    transitionDuration: z.number().optional() // Duration of fade transition in frames
+  })).optional(),
   font: z.string(),
   fontSize: z.number(),
   color: z.string(),
@@ -31,7 +37,8 @@ type CaptionVideoProps = z.infer<typeof CaptionVideoPropsSchema>;
 
 const CaptionVideo: React.FC<CaptionVideoProps> = ({ 
   videoSrc, 
-  captions, 
+  captions,
+  brollClips = [],
   font, 
   fontSize, 
   color, 
@@ -53,6 +60,8 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
     position,
     highlightType
   });
+
+  console.log('B-roll clips received:', brollClips);
 
   const renderWord = (word: string, start: number, end: number) => {
     const currentTime = frame / fps;
@@ -92,28 +101,166 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
     }
   };
 
+  // Function to determine which video should be shown
+  const getCurrentVideo = () => {
+    console.log('Current frame:', frame);
+    console.log('FPS:', fps);
+    console.log('B-roll clips:', brollClips);
+    
+    for (const clip of brollClips) {
+      console.log('Checking clip:', {
+        startFrame: clip.startFrame,
+        endFrame: clip.endFrame,
+        currentFrame: frame,
+        url: clip.url,
+        transitionDuration: clip.transitionDuration
+      });
+      
+      const transitionDuration = clip.transitionDuration || 15; // Default 0.5s transition at 30fps
+      const startFrame = clip.startFrame;
+      const endFrame = clip.endFrame;
+      
+      // Check if we're in a transition period
+      if (frame >= startFrame && frame <= startFrame + transitionDuration) {
+        // Fade in b-roll
+        const progress = (frame - startFrame) / transitionDuration;
+        console.log('Fade in progress:', progress);
+        return {
+          type: 'transition',
+          mainOpacity: 1 - progress,
+          brollOpacity: progress,
+          brollUrl: clip.url
+        };
+      } else if (frame >= endFrame - transitionDuration && frame <= endFrame) {
+        // Fade out b-roll
+        const progress = (frame - (endFrame - transitionDuration)) / transitionDuration;
+        console.log('Fade out progress:', progress);
+        return {
+          type: 'transition',
+          mainOpacity: progress,
+          brollOpacity: 1 - progress,
+          brollUrl: clip.url
+        };
+      } else if (frame > startFrame && frame < endFrame) {
+        // Full b-roll
+        console.log('Full b-roll');
+        return {
+          type: 'broll',
+          brollUrl: clip.url
+        };
+      }
+    }
+    
+    // Default to main video
+    return {
+      type: 'main'
+    };
+  };
+
+  const currentVideo = getCurrentVideo();
+  console.log('Current video state:', currentVideo);
+
   return (
     <AbsoluteFill>
-      <OffthreadVideo 
-        src={videoSrc} 
-        style={{
+      {/* Main Video */}
+      <div style={{
+        position: 'absolute',
+        width: '100%',
+        height: '100%',
+        opacity: currentVideo.type === 'broll' ? 0 : 
+                currentVideo.type === 'transition' ? currentVideo.mainOpacity : 1
+      }}>
+        <OffthreadVideo 
+          src={videoSrc} 
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            backgroundColor: '#000'
+          }}
+          onError={(error) => {
+            console.error('Video playback error:', error);
+            if (onError?.fallbackVideo) {
+              console.log('Using fallback video:', onError.fallbackVideo);
+            }
+          }}
+        />
+      </div>
+
+      {/* B-roll Video (when active) */}
+      {currentVideo.type !== 'main' && currentVideo.brollUrl && (
+        <div style={{
+          position: 'absolute',
           width: '100%',
           height: '100%',
-          objectFit: 'cover',
+          opacity: currentVideo.type === 'transition' ? currentVideo.brollOpacity : 1
+        }}>
+          <OffthreadVideo
+            src={currentVideo.brollUrl}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              backgroundColor: '#000'
+            }}
+            onError={(error) => {
+              console.error('B-roll video error:', error);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Debug overlay for B-roll state */}
+      {(currentVideo.type === 'broll' || currentVideo.type === 'transition') && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: 40,
+            background: currentVideo.type === 'broll' ? 'rgba(0,255,0,0.5)' : 'rgba(255,165,0,0.5)',
+            color: '#000',
+            fontWeight: 'bold',
+            fontSize: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          {currentVideo.type === 'broll' ? 'B-ROLL ACTIVE' : 'B-ROLL TRANSITION'}
+        </div>
+      )}
+
+      {/* Always visible debug overlay */}
+      <div
+        style={{
           position: 'absolute',
           top: 0,
           left: 0,
-          backgroundColor: '#000'
+          width: '100%',
+          height: 40,
+          background: 'rgba(0,0,0,0.7)',
+          color: '#fff',
+          fontWeight: 'bold',
+          fontSize: 16,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
         }}
-        onError={(error) => {
-          console.error('Video playback error:', error);
-          if (onError?.fallbackVideo) {
-            // If there's a fallback video, we could switch to it here
-            // However, since this is a render, we'll just log the error
-            console.log('Using fallback video:', onError.fallbackVideo);
-          }
-        }}
-      />
+      >
+        Frame: {frame} | State: {currentVideo.type}
+      </div>
+
+      {/* Captions (always on top) */}
       <TransitionSeries>
         {captions.map((caption, index) => {
           const currentTime = frame / fps;
@@ -134,7 +281,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
                     fontSize: `${fontSize * (height / 1080)}px`,
                     fontWeight: font.includes('Black') ? '900' : '700',
                     fontStyle: font.includes('Italic') ? 'italic' : 'normal',
-                    zIndex: 1,
+                    zIndex: 2, // Ensure captions are always on top
                     margin: '0 auto',
                     maxWidth: '80%',
                     left: '50%',

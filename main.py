@@ -18,6 +18,17 @@ from backend.services.remotion_service import RemotionService
 # Load environment variables
 load_dotenv()
 
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Set boto3 and botocore to WARNING level to reduce noise
+logging.getLogger('boto3').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+
 # Initialize logger
 logger = setup_logging(__name__, 'video_processor.log')
 
@@ -127,6 +138,35 @@ class VideoProcessor:
             # Generate captions
             segments = self.caption_processor.generate_captions(audio_path)
             
+            # Get b-roll suggestions
+            broll_suggestions = self.broll_analyzer.get_broll_suggestions(
+                segments,
+                video_duration=video_duration,
+                video_width=main_width,
+                video_height=main_height
+            )
+            
+            # Download and process b-roll clips
+            broll_clips = []
+            for suggestion in broll_suggestions:
+                if suggestion['broll_options']:
+                    # Get the first b-roll option
+                    broll_option = suggestion['broll_options'][0]
+                    
+                    # Download the b-roll video
+                    temp_dir = "temp/broll"
+                    os.makedirs(temp_dir, exist_ok=True)
+                    broll_path = self.download_broll_video(broll_option['url'], temp_dir)
+                    
+                    if broll_path:
+                        # Convert to Remotion format
+                        broll_clips.append({
+                            'url': broll_path,
+                            'startFrame': int(suggestion['timestamp'] * 30),  # Assuming 30fps
+                            'endFrame': int((suggestion['timestamp'] + suggestion['duration']) * 30),
+                            'transitionDuration': 15  # 0.5s transition at 30fps
+                        })
+            
             # Create caption clips with custom settings
             caption_data = self.caption_processor.create_caption_clips(
                 segments, 
@@ -149,7 +189,8 @@ class VideoProcessor:
                 'position': 0.7,
                 'maxWidth': main_width * 0.8,
                 'highlightColor': '#FFD700',
-                'videoUrl': input_path  # Pass the video URL to Remotion
+                'videoUrl': input_path,
+                'brollClips': broll_clips  # Add b-roll clips to settings
             }
             
             output_url = await remotion_service.process_video(
@@ -159,6 +200,9 @@ class VideoProcessor:
             
             # Clean up
             os.remove(audio_path)
+            for clip in broll_clips:
+                if os.path.exists(clip['url']):
+                    os.remove(clip['url'])
             
             return output_url
             

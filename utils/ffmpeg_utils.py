@@ -5,11 +5,7 @@ import os
 from typing import Tuple, Optional
 import ffmpeg
 
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Get logger
 logger = logging.getLogger(__name__)
 
 class FFmpegUtils:

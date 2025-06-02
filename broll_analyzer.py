@@ -10,8 +10,8 @@ from openai import OpenAI
 import time
 from utils import setup_logging, ensure_directory
 
-# Initialize logger
-logger = setup_logging(__name__, 'broll_analyzer.log')
+# Configure logging
+logger = logging.getLogger(__name__)
 
 class BrollAnalyzer:
     def __init__(self, pexels_api_key: str):
@@ -137,6 +137,8 @@ class BrollAnalyzer:
     def get_broll_suggestions(self, segments: List[Dict], video_duration: float = None, video_width: int = None, video_height: int = None) -> List[Dict]:
         """Generate b-roll suggestions for the entire video transcript"""
         logger.info("Starting b-roll suggestions generation...")
+        logger.info(f"Input segments count: {len(segments)}")
+        logger.info(f"Video duration: {video_duration}, dimensions: {video_width}x{video_height}")
         
         # Determine video orientation
         is_vertical = video_height and video_width and video_height > video_width
@@ -145,7 +147,7 @@ class BrollAnalyzer:
         
         # Combine all segments into a single transcript with timestamps
         transcript = "\n".join([
-            f"[{segment['start']:.2f}s - {segment['end']:.2f}s] {segment['text']}"
+            f"[{segment['startFrame']/30:.2f}s - {segment['endFrame']/30:.2f}s] {segment['text']}"
             for segment in segments
         ])
         logger.info(f"Combined transcript length: {len(transcript)} characters")
@@ -157,6 +159,7 @@ class BrollAnalyzer:
             return []
             
         logger.info(f"Generated {len(suggestions)} b-roll suggestions")
+        logger.debug(f"Raw suggestions: {json.dumps(suggestions, indent=2)}")
         
         # Get b-roll footage for each suggestion
         final_suggestions = []
@@ -167,6 +170,8 @@ class BrollAnalyzer:
                 confidence = suggestion['confidence']
                 explanation = suggestion['explanation']
                 
+                logger.info(f"Processing suggestion: keyword={keyword}, timestamp={timestamp}, confidence={confidence}")
+                
                 # Skip if timestamp is beyond video duration
                 if video_duration and timestamp >= video_duration:
                     logger.warning(f"Skipping suggestion at {timestamp:.2f}s as it's beyond video duration ({video_duration:.2f}s)")
@@ -175,7 +180,7 @@ class BrollAnalyzer:
                 logger.info(f"Searching for b-roll at {timestamp:.2f}s with keyword: {keyword}")
                 broll_results = self.search_broll(
                     keyword, 
-                    5.0,  # Default duration of 5 seconds
+                    5.0,
                     orientation=orientation,
                     target_width=video_width,
                     target_height=video_height
@@ -184,15 +189,15 @@ class BrollAnalyzer:
                 if broll_results:
                     final_suggestion = {
                         'timestamp': timestamp,
-                        'duration': 3.0,  # Fixed duration of 3 seconds
+                        'duration': 3.0,
                         'keyword': keyword,
                         'confidence': confidence,
                         'context': explanation,
-                        'broll_options': broll_results[:3]  # Get top 3 b-roll options
+                        'broll_options': broll_results[:3]
                     }
                     final_suggestions.append(final_suggestion)
                     logger.info(f"Added b-roll suggestion at {timestamp:.2f}s with keyword: {keyword}")
-                    logger.debug(f"Suggestion details: {final_suggestion}")
+                    logger.debug(f"Suggestion details: {json.dumps(final_suggestion, indent=2)}")
                 else:
                     logger.warning(f"No b-roll results found for keyword: {keyword} at {timestamp:.2f}s")
                     
@@ -252,8 +257,11 @@ class BrollAnalyzer:
                     if not video_files:
                         continue
                         
-                    # Sort by quality and get the best one
-                    video_file = sorted(video_files, key=lambda x: x.get('quality', 0), reverse=True)[0]
+                    # Sort by quality and get the best one, handling missing quality values
+                    video_file = sorted(video_files, 
+                        key=lambda x: x.get('quality', 0) or 0,  # Convert None to 0
+                        reverse=True
+                    )[0]
                     
                     # Check if the video dimensions match our target orientation
                     width = video_file.get('width', 0)
@@ -261,8 +269,10 @@ class BrollAnalyzer:
                     
                     # Skip if dimensions don't match orientation
                     if orientation == "vertical" and width > height:
+                        logger.debug(f"Skipping video {i+1}: wrong orientation (width={width}, height={height})")
                         continue
                     if orientation == "horizontal" and height > width:
+                        logger.debug(f"Skipping video {i+1}: wrong orientation (width={width}, height={height})")
                         continue
                     
                     # If we have target dimensions, prefer videos closer to our target size
@@ -273,7 +283,15 @@ class BrollAnalyzer:
                         ratio_diff = abs(target_ratio - video_ratio)
                         
                         # Skip if aspect ratio is too different
-                        if ratio_diff > 0.2:  # Allow 20% difference in aspect ratio
+                        if ratio_diff > 0.3:  # Allow 30% difference in aspect ratio
+                            logger.debug(f"Skipping video {i+1}: aspect ratio too different (target={target_ratio:.2f}, video={video_ratio:.2f})")
+                            continue
+                        
+                        # Skip if dimensions are too different
+                        width_diff = abs(width - target_width) / target_width
+                        height_diff = abs(height - target_height) / target_height
+                        if width_diff > 0.3 or height_diff > 0.3:  # Allow 30% difference in dimensions
+                            logger.debug(f"Skipping video {i+1}: dimensions too different (target={target_width}x{target_height}, video={width}x{height})")
                             continue
                     
                     result = {

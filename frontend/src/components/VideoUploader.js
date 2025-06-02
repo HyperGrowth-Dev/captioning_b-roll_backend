@@ -9,9 +9,11 @@ function VideoUploader() {
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
   const [highlightType, setHighlightType] = useState("background");
+  const [brollEnabled, setBrollEnabled] = useState(true);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    console.log('B-roll enabled:', brollEnabled);
     setProcessing(true);
     setError(null);
 
@@ -23,6 +25,7 @@ function VideoUploader() {
     formData.append('color', color);
     formData.append('font_size', fontSize);
     formData.append('highlight_type', highlightType);
+    formData.append('broll_enabled', brollEnabled);
 
     console.log('FormData highlight_type:', formData.get('highlight_type'));
 
@@ -201,6 +204,19 @@ function VideoUploader() {
               <span>24px</span>
               <span>96px</span>
             </div>
+          </div>
+
+          {/* B-roll Enabled Checkbox */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              B-roll Enabled
+            </label>
+            <input
+              type="checkbox"
+              checked={brollEnabled}
+              onChange={(e) => setBrollEnabled(e.target.checked)}
+              className="mt-1 h-4 w-4 text-indigo-600 focus:ring-indigo-500"
+            />
           </div>
 
           {/* Submit Button */}
