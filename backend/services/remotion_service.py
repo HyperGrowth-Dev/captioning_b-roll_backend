@@ -32,6 +32,10 @@ class RemotionService:
         try:
             logger.info(f"RemotionService processing video with broll_enabled={broll_enabled}")
             
+            # Get video info first
+            main_width, main_height, video_duration = FFmpegUtils.get_video_info(video_url)
+            logger.info(f"Video info: {main_width}x{main_height}, duration={video_duration}s")
+            
             # Convert captions to Remotion format if provided
             remotion_captions = None
             if captions:
@@ -45,7 +49,6 @@ class RemotionService:
                     }
                     for caption in captions
                 ]
-                #logger.info(f"Converted captions: {json.dumps(remotion_captions, indent=2)}")
 
             # Get b-roll clips if enabled
             broll_clips = []
@@ -58,10 +61,6 @@ class RemotionService:
                 
                 broll_analyzer = BrollAnalyzer(pexels_key)
                 logger.info("Initialized BrollAnalyzer")
-                
-                # Get video info
-                main_width, main_height, video_duration = FFmpegUtils.get_video_info(video_url)
-                logger.info(f"Video info: {main_width}x{main_height}, duration={video_duration}s")
                 
                 # Get b-roll suggestions
                 broll_suggestions = broll_analyzer.get_broll_suggestions(
@@ -106,9 +105,11 @@ class RemotionService:
                 'color': 'white',
                 'position': 'bottom',
                 'highlightType': 'background',
-                'brollClips': broll_clips
+                'brollClips': broll_clips,
+                'videoDuration': video_duration,  # Add video duration to input props
+                'videoWidth': main_width,  # Add video dimensions
+                'videoHeight': main_height
             }
-            #logger.info(f"Input props for Remotion: {json.dumps(input_props, indent=2)}")
 
             render_params = RenderMediaParams(
                 composition="CaptionVideo",
