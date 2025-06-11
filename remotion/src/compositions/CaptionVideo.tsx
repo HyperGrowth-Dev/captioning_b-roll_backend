@@ -50,17 +50,50 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
   const frame = useCurrentFrame();
 
   // Add debug logging
-  console.log('CaptionVideo props:', {
-    videoSrc,
-    captions,
-    font,
-    fontSize,
-    color,
-    position,
-    highlightType
-  });
+  console.log('Current frame:', frame);
+  console.log('Composition FPS:', fps);
 
-  console.log('B-roll clips received:', brollClips);
+  // Convert b-roll frame timings to match the composition's fps
+  const convertedBrollClips = brollClips.map(clip => {
+    // Extract frame rate from URL or filename
+    const fpsMatch = clip.url.match(/(\d+)fps/);
+    const clipFps = fpsMatch ? parseInt(fpsMatch[1]) : 30; // Default to 30fps if not found
+    
+    // Calculate the time in seconds for the original frames
+    const startTimeInSeconds = clip.startFrame / clipFps;
+    const endTimeInSeconds = clip.endFrame / clipFps;
+    
+    // Convert the time to composition frames
+    const convertedStartFrame = Math.floor(startTimeInSeconds * fps);
+    const convertedEndFrame = Math.floor(endTimeInSeconds * fps);
+    
+    console.log('Converting b-roll clip:', {
+      url: clip.url,
+      originalFps: clipFps,
+      compositionFps: fps,
+      original: {
+        startFrame: clip.startFrame,
+        endFrame: clip.endFrame,
+        startTime: startTimeInSeconds.toFixed(2) + 's',
+        endTime: endTimeInSeconds.toFixed(2) + 's',
+        duration: (endTimeInSeconds - startTimeInSeconds).toFixed(2) + 's'
+      },
+      converted: {
+        startFrame: convertedStartFrame,
+        endFrame: convertedEndFrame,
+        startTime: (convertedStartFrame / fps).toFixed(2) + 's',
+        endTime: (convertedEndFrame / fps).toFixed(2) + 's',
+        duration: ((convertedEndFrame - convertedStartFrame) / fps).toFixed(2) + 's'
+      }
+    });
+
+    return {
+      ...clip,
+      startFrame: convertedStartFrame,
+      endFrame: convertedEndFrame,
+      originalFps: clipFps
+    };
+  });
 
   const renderWord = (word: string, start: number, end: number) => {
     const currentTime = frame / fps;
@@ -102,7 +135,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
 
   // Calculate total duration based on captions and b-roll clips
   const lastCaptionFrame = Math.max(...(captions?.map(c => c.endFrame) || [0]));
-  const lastBrollFrame = Math.max(...(brollClips?.map(c => c.endFrame) || [0]));
+  const lastBrollFrame = Math.max(...(convertedBrollClips?.map(c => c.endFrame) || [0]));
   const totalDuration = Math.max(lastCaptionFrame, lastBrollFrame);
 
   return (
@@ -129,7 +162,7 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
 
       {/* B-roll Layer */}
       <Series>
-        {brollClips.map((clip, index) => (
+        {convertedBrollClips.map((clip, index) => (
           <Series.Sequence
             key={`broll-${index}`}
             offset={clip.startFrame}

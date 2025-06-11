@@ -13,7 +13,7 @@ const RemotionRoot = () => {
             <CaptionVideo {...props} />
           </FontLoader>
         )}
-        durationInFrames={900} // Default duration, will be overridden by calculateMetadata
+        durationInFrames={2000} // Increased default duration to accommodate longer videos
         fps={30}
         width={576}
         height={1024}
@@ -23,9 +23,24 @@ const RemotionRoot = () => {
           const lastCaptionFrame = Math.max(...(props.captions?.map(c => c.endFrame) || [0]));
           const lastBrollFrame = Math.max(...(props.brollClips?.map(c => c.endFrame) || [0]));
           const videoDuration = Math.max(lastCaptionFrame, lastBrollFrame);
-          // Add a small buffer (1 second) to ensure we don't cut off the end
+          
+          // Add a larger buffer (2 seconds) to ensure we don't cut off the end
+          const totalDuration = videoDuration + 60; // 60 frames = 2 seconds at 30fps
+          
+          console.log('Video duration calculation:', {
+            lastCaptionFrame,
+            lastBrollFrame,
+            videoDuration,
+            totalDuration,
+            brollClips: props.brollClips?.map(clip => ({
+              url: clip.url,
+              startFrame: clip.startFrame,
+              endFrame: clip.endFrame
+            }))
+          });
+          
           return {
-            durationInFrames: videoDuration + 30, // 30 frames = 1 second at 30fps
+            durationInFrames: totalDuration,
             width: 576,
             height: 1024
           };
