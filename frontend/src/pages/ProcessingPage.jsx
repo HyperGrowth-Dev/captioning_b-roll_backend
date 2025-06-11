@@ -189,6 +189,10 @@ function ProcessingPage() {
       setProcessedVideoUrl(null);
       setShowProcessedVideo(false);
 
+      // Get video dimensions from videoRef
+      const videoWidth = videoRef.current?.videoWidth || 607;
+      const videoHeight = videoRef.current?.videoHeight || 1080;
+
       // Step 1: Upload video to S3
       console.log('Starting video upload...');
       const { key: inputKey } = await uploadVideo(selectedFile);
@@ -200,7 +204,9 @@ function ProcessingPage() {
         font: selectedFont.family,
         color: selectedColor.value,
         font_size: fontSize,
-        highlight_type: highlightType
+        highlight_type: highlightType,
+        video_width: videoWidth,
+        video_height: videoHeight
       });
       console.log('Video processing initiated:', processData);
 

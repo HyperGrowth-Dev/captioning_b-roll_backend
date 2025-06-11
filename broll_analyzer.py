@@ -116,8 +116,10 @@ class BrollAnalyzer:
                         keywords = result['keywords']
                     else:
                         keywords = result  # Assume the model returned the array directly
-                        
-                    logger.debug(f"OpenAI suggested keywords: {keywords}")
+                    # keywords = [{'keyword': 'sunrise', 'timestamp': 12.13, 'confidence': 0.9, 'explanation': 'Visual of sunrise aligning with waking up with the sun'}, 
+                    #             {'keyword': 'sunrise', 'timestamp': 21.2, 'confidence': 0.8, 'explanation': 'Footage of fluorescent lights representing artificial lighting disrupting sleep patterns'}, 
+                    #             {'keyword': 'sunrise', 'timestamp': 36.33, 'confidence': 0.85, 'explanation': 'Clip showing someone being exposed to daylight for regulating circadian rhythm'}]
+                    logger.info(f"OpenAI suggested keywords: {keywords}")
                     return keywords
                 except json.JSONDecodeError as json_error:
                     logger.error(f"Failed to parse OpenAI response as JSON: {str(json_error)}")
@@ -142,7 +144,7 @@ class BrollAnalyzer:
         
         # Determine video orientation
         is_vertical = video_height and video_width and video_height > video_width
-        orientation = "vertical" if is_vertical else "horizontal"
+        orientation = "portrait" if is_vertical else "landscape"
         logger.info(f"Video orientation: {orientation} ({video_width}x{video_height})")
         
         # Combine all segments into a single transcript with timestamps

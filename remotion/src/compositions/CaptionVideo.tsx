@@ -1,6 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, useVideoConfig, OffthreadVideo, useCurrentFrame, interpolate } from 'remotion';
-import { TransitionSeries } from '@remotion/transitions';
+import { AbsoluteFill, useVideoConfig, OffthreadVideo, useCurrentFrame, interpolate, Series } from 'remotion';
 import { z } from 'zod';
 import '../styles/fonts.css';
 
@@ -101,129 +100,75 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
     }
   };
 
-  // Function to determine which video should be shown
-  const getCurrentVideo = () => {
-    console.log('Current frame:', frame);
-    console.log('FPS:', fps);
-    console.log('B-roll clips:', brollClips);
-    
-    for (const clip of brollClips) {
-      console.log('Checking clip:', {
-        startFrame: clip.startFrame,
-        endFrame: clip.endFrame,
-        currentFrame: frame,
-        url: clip.url,
-        transitionDuration: clip.transitionDuration
-      });
-      
-      const transitionDuration = clip.transitionDuration || 8; // Default 0.27s transition at 30fps
-      const startFrame = clip.startFrame;
-      const endFrame = clip.endFrame;
-      
-      // Check if we're in a transition period
-      if (frame >= startFrame && frame <= startFrame + transitionDuration) {
-        // Fade in b-roll
-        const progress = (frame - startFrame) / transitionDuration;
-        console.log('Fade in progress:', progress);
-        return {
-          type: 'transition',
-          mainOpacity: 1 - progress,
-          brollOpacity: progress,
-          brollUrl: clip.url
-        };
-      } else if (frame >= endFrame - transitionDuration && frame <= endFrame) {
-        // Fade out b-roll
-        const progress = (frame - (endFrame - transitionDuration)) / transitionDuration;
-        console.log('Fade out progress:', progress);
-        return {
-          type: 'transition',
-          mainOpacity: progress,
-          brollOpacity: 1 - progress,
-          brollUrl: clip.url
-        };
-      } else if (frame > startFrame && frame < endFrame) {
-        // Full b-roll
-        console.log('Full b-roll');
-        return {
-          type: 'broll',
-          brollUrl: clip.url
-        };
-      }
-    }
-    
-    // Default to main video
-    return {
-      type: 'main'
-    };
-  };
-
-  const currentVideo = getCurrentVideo();
-  console.log('Current video state:', currentVideo);
+  // Calculate total duration based on captions and b-roll clips
+  const lastCaptionFrame = Math.max(...(captions?.map(c => c.endFrame) || [0]));
+  const lastBrollFrame = Math.max(...(brollClips?.map(c => c.endFrame) || [0]));
+  const totalDuration = Math.max(lastCaptionFrame, lastBrollFrame);
 
   return (
     <AbsoluteFill>
-      {/* Main Video */}
-      <div style={{
-        position: 'absolute',
-        width: '100%',
-        height: '100%',
-        opacity: currentVideo.type === 'broll' ? 0 : 
-                currentVideo.type === 'transition' ? currentVideo.mainOpacity : 1
-      }}>
-        <OffthreadVideo 
-          src={videoSrc} 
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            backgroundColor: '#000'
-          }}
-          onError={(error) => {
-            console.error('Video playback error:', error);
-            if (onError?.fallbackVideo) {
-              console.log('Using fallback video:', onError.fallbackVideo);
-            }
-          }}
-        />
-      </div>
-
-      {/* B-roll Video (when active) */}
-      {currentVideo.type !== 'main' && currentVideo.brollUrl && (
-        <div style={{
-          position: 'absolute',
+      {/* Main Video - Always present */}
+      <OffthreadVideo 
+        src={videoSrc} 
+        style={{
           width: '100%',
           height: '100%',
-          opacity: currentVideo.type === 'transition' ? currentVideo.brollOpacity : 1
-        }}>
-          <OffthreadVideo
-            src={currentVideo.brollUrl}
-            style={{
+          objectFit: 'cover',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          backgroundColor: '#000'
+        }}
+        onError={(error) => {
+          console.error('Video playback error:', error);
+          if (onError?.fallbackVideo) {
+            console.log('Using fallback video:', onError.fallbackVideo);
+          }
+        }}
+      />
+
+      {/* B-roll Layer */}
+      <Series>
+        {brollClips.map((clip, index) => (
+          <Series.Sequence
+            key={`broll-${index}`}
+            offset={clip.startFrame}
+            durationInFrames={clip.endFrame - clip.startFrame}
+          >
+            <div style={{
+              position: 'absolute',
               width: '100%',
               height: '100%',
-              objectFit: 'cover',
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              backgroundColor: '#000'
-            }}
-            onError={(error) => {
-              console.error('B-roll video error:', error);
-              console.error('B-roll URL:', currentVideo.brollUrl);
-            }}
-          />
-        </div>
-      )}
+              zIndex: 1 // Ensure b-roll is above main video
+            }}>
+              <OffthreadVideo
+                src={clip.url}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: 'cover',
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  backgroundColor: '#000'
+                }}
+                onError={(error) => {
+                  console.error('B-roll video error:', error);
+                  console.error('B-roll URL:', clip.url);
+                }}
+              />
+            </div>
+          </Series.Sequence>
+        ))}
+      </Series>
 
-      {/* Captions (always on top) */}
-      <TransitionSeries>
+      {/* Captions Layer */}
+      <Series>
         {captions.map((caption, index) => {
           const currentTime = frame / fps;
           if (currentTime >= caption.startFrame / fps && currentTime <= caption.endFrame / fps) {
             return (
-              <TransitionSeries.Sequence
+              <Series.Sequence
                 key={index}
                 offset={caption.startFrame}
                 durationInFrames={caption.endFrame - caption.startFrame}
@@ -263,12 +208,12 @@ const CaptionVideo: React.FC<CaptionVideoProps> = ({
                     </span>
                   )}
                 </div>
-              </TransitionSeries.Sequence>
+              </Series.Sequence>
             );
           }
           return null;
         })}
-      </TransitionSeries>
+      </Series>
     </AbsoluteFill>
   );
 };

@@ -194,7 +194,9 @@ async def process_video(
     color: str = Form(...),
     font_size: int = Form(32),
     highlight_type: str = Form("background"),
-    broll_enabled: bool = Form(True)
+    broll_enabled: bool = Form(True),
+    video_width: int = Form(607),
+    video_height: int = Form(1080)
 ):
     try:
         # Get the S3 URL for the input video
@@ -230,8 +232,8 @@ async def process_video(
         # Create caption clips
         caption_clips = caption_processor.create_caption_clips(
             segments,
-            video_width=1920,  # Default width
-            video_height=1080,  # Default height
+            video_width=video_width,
+            video_height=video_height,
             font=font,
             color=color,
             font_size=font_size
@@ -239,7 +241,14 @@ async def process_video(
 
         # Process video using Remotion
         output_key = f"processed/{os.path.basename(input_key)}"
-        result = remotion_service.process_video(video_url, output_key, caption_clips, broll_enabled=broll_enabled)
+        result = remotion_service.process_video(
+            video_url, 
+            output_key, 
+            caption_clips, 
+            broll_enabled=broll_enabled,
+            video_width=video_width,
+            video_height=video_height
+        )
         
         # Clean up temporary files
         os.remove(video_path)

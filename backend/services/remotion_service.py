@@ -28,13 +28,20 @@ class RemotionService:
             function_name=self.function_name
         )
 
-    def process_video(self, video_url: str, output_key: str, captions: list = None, broll_enabled: bool = True) -> dict:
+    def process_video(self, video_url: str, output_key: str, captions: list = None, broll_enabled: bool = True, video_width: int = None, video_height: int = None) -> dict:
         try:
             logger.info(f"RemotionService processing video with broll_enabled={broll_enabled}")
             
-            # Get video info first
-            main_width, main_height, video_duration = FFmpegUtils.get_video_info(video_url)
-            logger.info(f"Video info: {main_width}x{main_height}, duration={video_duration}s")
+            # Use provided dimensions
+            main_width = video_width or 607  # Default to 607 if not provided
+            main_height = video_height or 1080  # Default to 1080 if not provided
+            logger.info(f"Using video dimensions: {main_width}x{main_height}")
+            
+            # Get video duration from the last caption if available
+            video_duration = None
+            if captions and len(captions) > 0:
+                video_duration = captions[-1]['endFrame'] / 30  # Convert frames to seconds
+                logger.info(f"Using video duration from captions: {video_duration:.2f}s")
             
             # Convert captions to Remotion format if provided
             remotion_captions = None
@@ -75,22 +82,14 @@ class RemotionService:
                 for suggestion in broll_suggestions:
                     if suggestion['broll_options']:
                         broll_option = suggestion['broll_options'][0]
-                        # Allow for some difference in dimensions (50%)
-                        width_diff = abs(broll_option.get('width', 0) - main_width) / main_width
-                        height_diff = abs(broll_option.get('height', 0) - main_height) / main_height
-                        
-                        if width_diff > 0.5 or height_diff > 0.5:
-                            logger.warning(f"B-roll clip dimensions ({broll_option.get('width')}x{broll_option.get('height')}) too different from main video ({main_width}x{main_height})")
-                            continue
-                            
-                        broll_clip = {
+                        # Create b-roll clip with timing
+                        broll_clips.append({
                             'url': broll_option['url'],
                             'startFrame': int(suggestion['timestamp'] * 30),  # Convert seconds to frames at 30fps
-                            'endFrame': int((suggestion['timestamp'] + suggestion['duration']) * 30),  # Convert seconds to frames at 30fps
-                            'transitionDuration': 8  # 0.27 seconds at 30fps
-                        }
-                        logger.info(f"Added b-roll clip with timing: start={broll_clip['startFrame']} frames ({broll_clip['startFrame']/30:.2f}s), end={broll_clip['endFrame']} frames ({broll_clip['endFrame']/30:.2f}s)")
-                        broll_clips.append(broll_clip)
+                            'endFrame': int((suggestion['timestamp'] + suggestion['duration']) * 30),  # Use duration from suggestion
+                            'transitionDuration': 8  # 8 frames transition (about 0.27s at 30fps)
+                        })
+                        logger.info(f"Added b-roll clip with timing: start={int(suggestion['timestamp'] * 30)} frames ({suggestion['timestamp']:.2f}s), end={int((suggestion['timestamp'] + suggestion['duration']) * 30)} frames ({(suggestion['timestamp'] + suggestion['duration']):.2f}s), fps=30")
 
             logger.info(f"Final b-roll clips count: {len(broll_clips)}")
             if broll_clips:
