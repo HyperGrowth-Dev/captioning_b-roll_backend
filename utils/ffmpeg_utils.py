@@ -10,15 +10,15 @@ logger = logging.getLogger(__name__)
 
 class FFmpegUtils:
     @staticmethod
-    def get_video_info(video_path: str) -> Tuple[int, int, float]:
+    def get_video_info(video_path: str) -> Tuple[int, int, float, float]:
         """
-        Get video dimensions and duration using FFmpeg
+        Get video dimensions, duration and FPS using FFmpeg
         
         Args:
             video_path: Path to the video file
             
         Returns:
-            Tuple of (width, height, duration)
+            Tuple of (width, height, duration, fps)
         """
         try:
             # Run FFprobe to get video information
@@ -26,7 +26,7 @@ class FFmpegUtils:
                 'ffprobe',
                 '-v', 'error',
                 '-select_streams', 'v:0',
-                '-show_entries', 'stream=width,height',
+                '-show_entries', 'stream=width,height,r_frame_rate',
                 '-show_entries', 'format=duration',
                 '-of', 'json',
                 video_path
@@ -44,8 +44,16 @@ class FFmpegUtils:
             height = info['streams'][0]['height']
             duration = float(info['format']['duration'])
             
-            logger.info(f"Video info: {width}x{height}, duration: {duration}s")
-            return width, height, duration
+            # Parse frame rate (it comes as a fraction like "30000/1001")
+            fps_str = info['streams'][0]['r_frame_rate']
+            if '/' in fps_str:
+                num, den = map(int, fps_str.split('/'))
+                fps = num / den
+            else:
+                fps = float(fps_str)
+            
+            logger.info(f"Video info: {width}x{height}, duration: {duration}s, fps: {fps}")
+            return width, height, duration, fps
             
         except Exception as e:
             logger.error(f"Error getting video info: {str(e)}")

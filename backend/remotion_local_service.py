@@ -136,7 +136,7 @@ class RemotionLocalService:
                 "--crf", "28",
                 "--pixel-format", "yuv420p",
                 "--audio-bitrate", "128k",
-                "--frames-per-second", "24",
+                "--frames-per-second", str(settings.get("fps", 30)),
                 "--timeout", "300000",
                 "--log", "info"
             ]

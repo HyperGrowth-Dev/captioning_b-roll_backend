@@ -215,12 +215,16 @@ async def process_video(
         video_path = os.path.join(temp_dir, f"{input_key}.mp4")
         await s3_service.download_file(input_key, video_path)
 
+        # Get video info including FPS
+        width, height, duration, fps = FFmpegUtils.get_video_info(video_path)
+        logger.info(f"Video FPS: {fps}, Duration: {duration}")
+
         # Extract audio
         audio_path = os.path.join(temp_dir, f"{input_key}.wav")
         FFmpegUtils.extract_audio(video_path, audio_path)
 
         # Generate captions
-        caption_processor = CaptionProcessor()
+        caption_processor = CaptionProcessor(fps=fps)  # Pass the actual FPS
         segments = caption_processor.generate_captions(audio_path)
         
         if not segments:
@@ -247,7 +251,13 @@ async def process_video(
             caption_clips, 
             broll_enabled=broll_enabled,
             video_width=video_width,
-            video_height=video_height
+            video_height=video_height,
+            fps=fps,  # Pass the FPS to Remotion service
+            font=font,
+            color=color,
+            font_size=font_size,
+            highlight_type=highlight_type,
+            video_duration=duration  # Pass the actual video duration
         )
         
         # Clean up temporary files

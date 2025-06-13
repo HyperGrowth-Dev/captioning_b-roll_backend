@@ -136,11 +136,11 @@ class BrollAnalyzer:
             logger.error(f"Error details: {traceback.format_exc()}")
             return []
 
-    def get_broll_suggestions(self, segments: List[Dict], video_duration: float = None, video_width: int = None, video_height: int = None) -> List[Dict]:
+    def get_broll_suggestions(self, segments: List[Dict], video_duration: float = None, video_width: int = None, video_height: int = None, fps: float = 30.0) -> List[Dict]:
         """Generate b-roll suggestions for the entire video transcript"""
         logger.info("Starting b-roll suggestions generation...")
         logger.info(f"Input segments count: {len(segments)}")
-        logger.info(f"Video duration: {video_duration}, dimensions: {video_width}x{video_height}")
+        logger.info(f"Video duration: {video_duration}, dimensions: {video_width}x{video_height}, FPS: {fps}")
         
         # Determine video orientation
         is_vertical = video_height and video_width and video_height > video_width
@@ -149,7 +149,7 @@ class BrollAnalyzer:
         
         # Combine all segments into a single transcript with timestamps
         transcript = "\n".join([
-            f"[{segment['startFrame']/30:.2f}s - {segment['endFrame']/30:.2f}s] {segment['text']}"
+            f"[{segment['startFrame']/fps:.2f}s - {segment['endFrame']/fps:.2f}s] {segment['text']}"
             for segment in segments
         ])
         logger.info(f"Combined transcript length: {len(transcript)} characters")
@@ -185,7 +185,8 @@ class BrollAnalyzer:
                     5.0,
                     orientation=orientation,
                     target_width=video_width,
-                    target_height=video_height
+                    target_height=video_height,
+                    target_fps=fps
                 )
                 
                 if broll_results:
@@ -211,10 +212,15 @@ class BrollAnalyzer:
         logger.info(f"Successfully processed {len(final_suggestions)} b-roll suggestions")
         return final_suggestions
 
-    def search_broll(self, keyword: str, duration: float, orientation: str = "horizontal", target_width: int = None, target_height: int = None) -> List[Dict]:
+    def search_broll(self, keyword: str, duration: float, orientation: str = "horizontal", target_width: int = None, target_height: int = None, target_fps: float = None) -> List[Dict]:
         """Search for b-roll footage using Pexels API"""
         try:
             logger.info(f"Searching for b-roll with keyword: {keyword} (orientation: {orientation})")
+            
+            # Round target FPS to nearest whole number
+            rounded_fps = round(target_fps) if target_fps else None
+            if rounded_fps:
+                logger.info(f"Target FPS: {target_fps} (rounded to {rounded_fps})")
             
             # Search for videos
             logger.debug(f"Making Pexels API call with keyword: {keyword}")
@@ -248,82 +254,64 @@ class BrollAnalyzer:
                 logger.warning(f"No videos found for keyword: {keyword}")
                 return []
             
-            logger.info(f"Found {len(videos)} videos for keyword: {keyword}")
-            
-            # Process and return video results
-            results = []
-            for i, video in enumerate(videos):
+            # Filter and process videos
+            filtered_videos = []
+            for video in videos:
                 try:
-                    # Get the best quality video file
+                    # Get the highest quality video file
                     video_files = video.get('video_files', [])
                     if not video_files:
                         continue
-                        
-                    # Sort by quality and get the best one, handling missing quality values
-                    video_file = sorted(video_files, 
-                        key=lambda x: x.get('quality', 0) or 0,  # Convert None to 0
-                        reverse=True
-                    )[0]
                     
-                    # Check if the video dimensions match our target orientation
-                    width = video_file.get('width', 0)
-                    height = video_file.get('height', 0)
+                    # Sort by quality (prefer HD)
+                    video_files.sort(key=lambda x: x.get('width', 0) * x.get('height', 0), reverse=True)
+                    video_file = video_files[0]
                     
-                    # Skip if dimensions don't match orientation
-                    if orientation == "vertical" and width > height:
-                        logger.debug(f"Skipping video {i+1}: wrong orientation (width={width}, height={height})")
-                        continue
-                    if orientation == "horizontal" and height > width:
-                        logger.debug(f"Skipping video {i+1}: wrong orientation (width={width}, height={height})")
+                    # Extract FPS from URL if available
+                    fps_match = re.search(r'(\d+)fps', video_file.get('link', ''))
+                    video_fps = int(fps_match.group(1)) if fps_match else None
+                    
+                    # Skip if FPS doesn't match target
+                    if rounded_fps and video_fps and video_fps != rounded_fps:
+                        logger.debug(f"Skipping video with FPS {video_fps} (doesn't match target {rounded_fps})")
                         continue
                     
-                    # If we have target dimensions, prefer videos closer to our target size
-                    if target_width and target_height:
-                        # Calculate aspect ratio difference
-                        target_ratio = target_width / target_height
-                        video_ratio = width / height
-                        ratio_diff = abs(target_ratio - video_ratio)
-                        
-                        # Skip if aspect ratio is too different
-                        if ratio_diff > 0.5:  # Allow 50% difference in aspect ratio
-                            logger.debug(f"Skipping video {i+1}: aspect ratio too different (target={target_ratio:.2f}, video={video_ratio:.2f})")
-                            continue
-                        
-                        # Skip if dimensions are too different
-                        width_diff = abs(width - target_width) / target_width
-                        height_diff = abs(height - target_height) / target_height
-                        if width_diff > 0.5 or height_diff > 0.5:  # Allow 50% difference in dimensions
-                            logger.debug(f"Skipping video {i+1}: dimensions too different (target={target_width}x{target_height}, video={width}x{height})")
-                            continue
+                    # Skip if video is too short
+                    if video.get('duration', 0) < duration:
+                        logger.debug(f"Skipping video with duration {video.get('duration')}s (too short)")
+                        continue
                     
-                    result = {
+                    # Skip if orientation doesn't match
+                    if orientation == "portrait" and video.get('width', 0) >= video.get('height', 0):
+                        logger.debug("Skipping landscape video (portrait requested)")
+                        continue
+                    elif orientation == "landscape" and video.get('width', 0) < video.get('height', 0):
+                        logger.debug("Skipping portrait video (landscape requested)")
+                        continue
+                    
+                    # Add video to filtered list
+                    filtered_videos.append({
+                        'id': video.get('id'),
                         'url': video_file.get('link'),
-                        'duration': video_file.get('duration'),
-                        'width': width,
-                        'height': height,
-                        'quality': video_file.get('quality'),
-                        'keyword': keyword
-                    }
-                    results.append(result)
-                    logger.debug(f"Processed video {i+1}: {result}")
+                        'width': video_file.get('width'),
+                        'height': video_file.get('height'),
+                        'duration': video.get('duration'),
+                        'fps': video_fps
+                    })
+                    
                 except Exception as e:
-                    logger.error(f"Error processing video {i+1}: {str(e)}")
-                    logger.error(f"Video processing error details: {traceback.format_exc()}")
+                    logger.error(f"Error processing video: {str(e)}")
                     continue
             
-            # Sort results by how well they match our target dimensions
-            if target_width and target_height:
-                results.sort(key=lambda x: abs((x['width']/x['height']) - (target_width/target_height)))
-            
-            logger.info(f"Successfully processed {len(results)} videos for keyword: {keyword}")
-            return results
+            logger.info(f"Found {len(filtered_videos)} matching videos after filtering")
+            return filtered_videos
             
         except Exception as e:
-            logger.error(f"Error searching for b-roll: {str(e)}")
+            logger.error(f"Error in search_broll: {str(e)}")
             logger.error(f"Error details: {traceback.format_exc()}")
             return []
 
-    def analyze_transcript(self, segments: List[Dict]) -> Dict:
+    def analyze_transcript(self, segments: List[Dict], fps: float = 30.0) -> Dict:
         """Analyze entire transcript and return b-roll suggestions"""
         logger.info("Starting transcript analysis...")
         if not segments:
@@ -332,7 +320,7 @@ class BrollAnalyzer:
 
         try:
             logger.info(f"Processing {len(segments)} segments")
-            broll_suggestions = self.get_broll_suggestions(segments)
+            broll_suggestions = self.get_broll_suggestions(segments, fps=fps)
             
             analysis = {
                 'broll_suggestions': broll_suggestions

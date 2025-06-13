@@ -13,36 +13,33 @@ const RemotionRoot = () => {
             <CaptionVideo {...props} />
           </FontLoader>
         )}
-        durationInFrames={2000} // Increased default duration to accommodate longer videos
-        fps={30}
+        durationInFrames={6000} // Increased default duration to accommodate longer videos
         width={576}
         height={1024}
         schema={CaptionVideoPropsSchema}
         calculateMetadata={({ props }: { props: z.infer<typeof CaptionVideoPropsSchema> }) => {
-          // Calculate duration based on the last caption or b-roll clip
+          const fps = props.fps || 30; // Default to 30fps if not provided
+          
+          // Calculate duration based on video duration, captions, and b-roll clips
           const lastCaptionFrame = Math.max(...(props.captions?.map(c => c.endFrame) || [0]));
           const lastBrollFrame = Math.max(...(props.brollClips?.map(c => c.endFrame) || [0]));
-          const videoDuration = Math.max(lastCaptionFrame, lastBrollFrame);
-          
-          // Add a larger buffer (2 seconds) to ensure we don't cut off the end
-          const totalDuration = videoDuration + 60; // 60 frames = 2 seconds at 30fps
+          const videoDurationInFrames = props.videoDuration ? Math.ceil(props.videoDuration * fps) : 0;
+          const totalDuration = Math.max(videoDurationInFrames, lastCaptionFrame, lastBrollFrame);
           
           console.log('Video duration calculation:', {
+            videoDurationInSeconds: props.videoDuration,
+            videoDurationInFrames,
             lastCaptionFrame,
             lastBrollFrame,
-            videoDuration,
             totalDuration,
-            brollClips: props.brollClips?.map(clip => ({
-              url: clip.url,
-              startFrame: clip.startFrame,
-              endFrame: clip.endFrame
-            }))
+            fps
           });
           
           return {
             durationInFrames: totalDuration,
             width: 576,
-            height: 1024
+            height: 1024,
+            fps: fps // Pass the FPS to the composition
           };
         }}
         defaultProps={{
