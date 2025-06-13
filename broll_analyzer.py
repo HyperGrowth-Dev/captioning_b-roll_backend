@@ -272,9 +272,9 @@ class BrollAnalyzer:
                     video_fps = int(fps_match.group(1)) if fps_match else None
                     
                     # Skip if FPS doesn't match target
-                    if rounded_fps and video_fps and video_fps != rounded_fps:
-                        logger.debug(f"Skipping video with FPS {video_fps} (doesn't match target {rounded_fps})")
-                        continue
+                    # if rounded_fps and video_fps and video_fps != rounded_fps:
+                    #     logger.debug(f"Skipping video with FPS {video_fps} (doesn't match target {rounded_fps})")
+                    #     continue
                     
                     # Skip if video is too short
                     if video.get('duration', 0) < duration:
