@@ -5,6 +5,7 @@ import logging
 import os
 import numpy as np
 
+os.environ['FFMPEG_BINARY'] = '/usr/bin/ffmpeg'
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -12,6 +13,8 @@ logger = logging.getLogger(__name__)
 class CaptionProcessor:
     def __init__(self):
         print("Loading Whisper model...")
+        # Set FFmpeg path explicitly
+        os.environ["PATH"] = "/usr/bin:" + os.environ["PATH"]
         self.model = whisper.load_model("base")
         self.max_segment_duration = 5.0  # Maximum duration for a segment in seconds
         self.max_words_per_segment = 3  # Maximum number of words per segment

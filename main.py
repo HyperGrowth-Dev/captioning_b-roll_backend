@@ -12,6 +12,7 @@ import traceback
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
 
+os.environ['FFMPEG_BINARY'] = '/usr/bin/ffmpeg'
 # Load environment variables
 load_dotenv()
 
