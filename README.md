@@ -88,3 +88,29 @@ Important considerations:
 - Always redeploy the site after making changes to any Remotion components
 - The serve URL is specific to your AWS deployment
 - You can add additional render options like `--concurrency` and `--frames-per-lambda` to optimize rendering
+
+## EC2 Instance
+when changes are made, go to download folder and ssh into ec2 instance
+```bash
+ssh -i "hyper-key.pem" ubuntu@ec2-18-224-63-78.us-east-2.compute.amazonaws.com
+```
+Then, go to application:
+```bash
+cd /var/www/vid_editor/
+```
+Pull changes from Github and merge them
+```bash
+git checkout main
+git fetch origin
+git checkout ec2
+git merge origin/[filename]
+```
+fix merge issues then use git add and commit
+
+
+Next, to actually push the changes to the website:
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart vid_editor
+sudo journalctl -u vid_editor -f
+```
