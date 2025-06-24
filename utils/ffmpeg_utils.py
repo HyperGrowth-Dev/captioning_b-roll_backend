@@ -4,6 +4,8 @@ import logging
 import os
 from typing import Tuple, Optional
 import ffmpeg
+os.environ['FFMPEG_BINARY'] = '/usr/bin/ffmpeg'
+os.environ['FFPROBE_BINARY'] = '/usr/bin/ffprobe'
 
 # Get logger
 logger = logging.getLogger(__name__)
@@ -23,7 +25,7 @@ class FFmpegUtils:
         try:
             # Run FFprobe to get video information
             cmd = [
-                'ffprobe',
+                '/usr/bin/ffprobe',
                 '-v', 'error',
                 '-select_streams', 'v:0',
                 '-show_entries', 'stream=width,height,r_frame_rate',
@@ -69,15 +71,29 @@ class FFmpegUtils:
             output_path: Path to save the audio file
         """
         try:
-            # First check if the video has an audio stream
-            probe = ffmpeg.probe(video_path)
-            audio_streams = [stream for stream in probe['streams'] if stream['codec_type'] == 'audio']
+            # First check if the video has an audio stream using ffprobe directly
+            ffprobe_path = "/usr/bin/ffprobe"
+            probe_cmd = [
+                ffprobe_path,
+                '-v', 'error',
+                '-select_streams', 'a',
+                '-show_entries', 'stream=codec_type',
+                '-of', 'json',
+                video_path
+            ]
             
+            result = subprocess.run(probe_cmd, capture_output=True, text=True)
+            if result.returncode != 0:
+                raise RuntimeError(f"FFprobe failed: {result.stderr}")
+            
+            info = json.loads(result.stdout)
+            audio_streams = [stream for stream in info['streams'] if stream['codec_type'] == 'audio']
+
             if not audio_streams:
                 logger.warning(f"No audio stream found in video: {video_path}")
                 # Create an empty WAV file with silence
                 cmd = [
-                    'ffmpeg',
+                    '/usr/bin/ffmpeg',
                     '-f', 'lavfi',
                     '-i', 'anullsrc=r=16000:cl=mono',
                     '-t', '1',  # 1 second of silence
@@ -87,7 +103,7 @@ class FFmpegUtils:
             else:
                 # Run FFmpeg to extract audio
                 cmd = [
-                    'ffmpeg',
+                    '/usr/bin/ffmpeg',
                     '-i', video_path,
                     '-vn',  # No video
                     '-acodec', 'pcm_s16le',  # PCM 16-bit little-endian

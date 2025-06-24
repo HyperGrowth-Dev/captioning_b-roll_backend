@@ -3,6 +3,8 @@ import logging
 import os
 from typing import List, Dict
 
+os.environ['FFMPEG_BINARY'] = '/usr/bin/ffmpeg'
+
 # Get logger
 logger = logging.getLogger(__name__)
 
