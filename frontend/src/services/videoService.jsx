@@ -58,6 +58,7 @@ export const processVideo = async (inputKey, options) => {
     formData.append('highlight_type', options.highlight_type);
     formData.append('video_width', options.video_width);
     formData.append('video_height', options.video_height);
+    formData.append('broll_enabled', options.broll_enabled);
 
     console.log('Sending processing request to backend...');
     const { data } = await axios.post(`${API_URL}/process`, formData, {

@@ -122,6 +122,8 @@ function ProcessingPage() {
   const videoRef = useRef(null);
   const [fontSize, setFontSize] = useState(32);
   const [isHighlightPanelOpen, setIsHighlightPanelOpen] = useState(false);
+  const [brollEnabled, setBrollEnabled] = useState(null);
+  const [isBrollPanelOpen, setIsBrollPanelOpen] = useState(false);
 
   // Set video URL when file is received
   useEffect(() => {
@@ -177,9 +179,20 @@ function ProcessingPage() {
     setIsHighlightPanelOpen(!isHighlightPanelOpen);
   };
 
+  const toggleBrollPanel = () => {
+    if (!highlightType) return;
+    setIsBrollPanelOpen(!isBrollPanelOpen);
+  };
+
   const handleHighlightTypeSelect = (type) => {
     setHighlightType(type);
     setIsHighlightPanelOpen(false);
+    setIsBrollPanelOpen(true);
+  };
+
+  const handleBrollSelect = (enabled) => {
+    setBrollEnabled(enabled);
+    setIsBrollPanelOpen(false);
   };
 
   const handleProcessVideo = async () => {
@@ -206,7 +219,8 @@ function ProcessingPage() {
         font_size: fontSize,
         highlight_type: highlightType,
         video_width: videoWidth,
-        video_height: videoHeight
+        video_height: videoHeight,
+        broll_enabled: brollEnabled
       });
       console.log('Video processing initiated:', processData);
 
@@ -241,17 +255,16 @@ function ProcessingPage() {
   }, [processedVideoUrl, showProcessedVideo, isProcessing]);
 
   return (
-    <div className="min-h-screen flex">
-      {/* Video Preview Section - Fixed position */}
-      <div className="fixed left-0 w-1/2 h-screen bg-purple-950/50 p-8 flex items-center justify-center">
-        <div className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center space-y-4">
+    <div className="min-h-screen flex flex-col lg:flex-row bg-purple-950">
+      {/* Video Preview Section - Responsive */}
+      <div className="w-full lg:w-1/2 min-h-[50vh] lg:min-h-screen flex items-center justify-center p-4 lg:p-8">
+        <div className="w-full max-w-lg mx-auto flex flex-col items-center justify-center space-y-4">
           {/* Video Preview */}
           <div 
             className="relative w-full rounded-xl overflow-hidden cyber-border bg-white"
             style={{
-              maxWidth: '480px',
               aspectRatio: videoAspectRatio,
-              margin: '0 auto'
+              maxWidth: '100%'
             }}
           >
             {videoUrl ? (
@@ -311,12 +324,12 @@ function ProcessingPage() {
 
           {/* Video Toggle Controls */}
           {processedVideoUrl && !isProcessing && (
-            <div className="flex flex-col space-y-4">
-              <div className="flex space-x-4">
+            <div className="flex flex-col space-y-4 w-full max-w-lg">
+              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-4">
                 <button
                   onClick={() => setShowProcessedVideo(false)}
                   className={clsx(
-                    'px-4 py-2 rounded-lg transition-all',
+                    'px-4 py-2 rounded-lg transition-all text-sm sm:text-base',
                     !showProcessedVideo
                       ? 'bg-purple-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -327,7 +340,7 @@ function ProcessingPage() {
                 <button
                   onClick={() => setShowProcessedVideo(true)}
                   className={clsx(
-                    'px-4 py-2 rounded-lg transition-all',
+                    'px-4 py-2 rounded-lg transition-all text-sm sm:text-base',
                     showProcessedVideo
                       ? 'bg-purple-600 text-white'
                       : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
@@ -338,7 +351,7 @@ function ProcessingPage() {
               </div>
               <button
                 onClick={handleDownload}
-                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all"
+                className="px-4 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 transition-all text-sm sm:text-base"
               >
                 Download Processed Video
               </button>
@@ -347,27 +360,27 @@ function ProcessingPage() {
         </div>
       </div>
 
-      {/* Options Section - Fixed position and centered */}
-      <div className="fixed right-0 w-1/2 h-screen flex items-center justify-center">
+      {/* Options Section - Responsive */}
+      <div className="w-full lg:w-1/2 min-h-[50vh] lg:min-h-screen flex items-center justify-center p-4 lg:p-8">
         <LayoutGroup>
           <motion.div 
             layout
-            className="w-full max-w-md px-8 space-y-4"
+            className="w-full max-w-md mx-auto space-y-4"
           >
             {/* Font Selection Panel */}
             <motion.div layout>
               <motion.button
                 layout
                 onClick={toggleFontPanel}
-                className="w-full p-4 cyber-border backdrop-blur-xl bg-purple-900/30 hover:bg-purple-800/40 
+                className="w-full p-3 sm:p-4 cyber-border backdrop-blur-xl bg-purple-900/30 hover:bg-purple-800/40 
                          transition-colors duration-300 rounded-xl"
               >
                 <motion.div layout className="flex items-center justify-between">
-                  <motion.h2 layout className="text-xl font-semibold text-purple-100">
+                  <motion.h2 layout className="text-lg sm:text-xl font-semibold text-purple-100">
                     Font Selection
                   </motion.h2>
                   {selectedFont && (
-                    <motion.span layout className="text-sm text-purple-300">
+                    <motion.span layout className="text-xs sm:text-sm text-purple-300">
                       Selected: {selectedFont.name}
                     </motion.span>
                   )}
@@ -409,16 +422,16 @@ function ProcessingPage() {
                           whileHover={{ scale: 1.02 }}
                           transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         >
-                          <motion.div layout className="bg-white p-4">
+                          <motion.div layout className="bg-white p-3 sm:p-4">
                             <motion.span 
                               layout 
-                              className="block text-xl text-black" 
+                              className="block text-lg sm:text-xl text-black" 
                               style={font.previewStyle}
                             >
                               The quick brown fox jumps over the lazy dog
                             </motion.span>
                             <motion.div layout className="flex justify-between items-center mt-2">
-                              <motion.span layout className="text-sm text-gray-600">{font.name}</motion.span>
+                              <motion.span layout className="text-xs sm:text-sm text-gray-600">{font.name}</motion.span>
                               <motion.span layout className="text-xs text-gray-500">{font.style}</motion.span>
                             </motion.div>
                           </motion.div>
@@ -435,18 +448,19 @@ function ProcessingPage() {
               <motion.button
                 layout
                 onClick={toggleColorPanel}
-                className={`w-full p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
+                className={`w-full p-3 sm:p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
                           ${selectedFont ? 'bg-purple-900/30 hover:bg-purple-800/40 cursor-pointer' : 'bg-purple-900/10 cursor-not-allowed'}`}
                 disabled={!selectedFont}
               >
                 <motion.div layout className="flex items-center justify-between">
-                  <motion.h2 layout className="text-xl font-semibold text-purple-100">
+                  <motion.h2 layout className="text-lg sm:text-xl font-semibold text-purple-100">
                     Color Selection
                   </motion.h2>
                   {selectedColor && (
                     <motion.div 
                       layout 
-                      className={`w-6 h-6 rounded-full ${selectedColor.bgClass}`}
+                      className="w-5 h-5 sm:w-6 sm:h-6 rounded-full"
+                      style={{ backgroundColor: selectedColor.value }}
                     />
                   )}
                 </motion.div>
@@ -483,7 +497,8 @@ function ProcessingPage() {
                           layout
                           key={color.name}
                           onClick={() => handleColorSelect(color)}
-                          className={`w-full h-16 rounded-xl ${color.bgClass} transition-all duration-300 hover:scale-[1.02]`}
+                          className={`w-full h-12 sm:h-16 rounded-xl transition-all duration-300 hover:scale-[1.02]`}
+                          style={{ backgroundColor: color.value }}
                           whileHover={{ scale: 1.02 }}
                           transition={{ type: "spring", stiffness: 400, damping: 25 }}
                         />
@@ -499,16 +514,16 @@ function ProcessingPage() {
               <motion.button
                 layout
                 onClick={toggleHighlightPanel}
-                className={`w-full p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
+                className={`w-full p-3 sm:p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
                           ${selectedColor ? 'bg-purple-900/30 hover:bg-purple-800/40 cursor-pointer' : 'bg-purple-900/10 cursor-not-allowed'}`}
                 disabled={!selectedColor}
               >
                 <motion.div layout className="flex items-center justify-between">
-                  <motion.h2 layout className="text-xl font-semibold text-purple-100">
+                  <motion.h2 layout className="text-lg sm:text-xl font-semibold text-purple-100">
                     Highlight Type
                   </motion.h2>
                   {highlightType && (
-                    <motion.span layout className="text-sm text-purple-300">
+                    <motion.span layout className="text-xs sm:text-sm text-purple-300">
                       Selected: {highlightType === 'background' ? 'Background' : 'Fill'}
                     </motion.span>
                   )}
@@ -541,17 +556,17 @@ function ProcessingPage() {
                     className="overflow-hidden"
                   >
                     <motion.div layout className="space-y-3 mt-4">
-                      <div className="grid grid-cols-2 gap-4">
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
                         <button
                           onClick={() => handleHighlightTypeSelect('background')}
-                          className={`p-4 rounded-xl cyber-border transition-all duration-300 ${
+                          className={`p-3 sm:p-4 rounded-xl cyber-border transition-all duration-300 ${
                             highlightType === 'background' 
                               ? 'bg-purple-600/50 border-purple-400' 
                               : 'bg-purple-900/30 hover:bg-purple-800/40'
                           }`}
                         >
-                          <div className="text-purple-100 font-medium mb-2">Background</div>
-                          <div className="text-sm text-purple-300">
+                          <div className="text-purple-100 font-medium mb-2 text-sm sm:text-base">Background</div>
+                          <div className="text-xs sm:text-sm text-purple-300">
                             <div className="space-x-1">
                               <span>Sample</span>
                               <span className="bg-yellow-500 px-1 rounded">Text</span>
@@ -561,14 +576,14 @@ function ProcessingPage() {
 
                         <button
                           onClick={() => handleHighlightTypeSelect('fill')}
-                          className={`p-4 rounded-xl cyber-border transition-all duration-300 ${
+                          className={`p-3 sm:p-4 rounded-xl cyber-border transition-all duration-300 ${
                             highlightType === 'fill' 
                               ? 'bg-purple-600/50 border-purple-400' 
                               : 'bg-purple-900/30 hover:bg-purple-800/40'
                           }`}
                         >
-                          <div className="text-purple-100 font-medium mb-2">Fill</div>
-                          <div className="text-sm text-purple-300">
+                          <div className="text-purple-100 font-medium mb-2 text-sm sm:text-base">Fill</div>
+                          <div className="text-xs sm:text-sm text-purple-300">
                             <div className="space-x-1">
                               <span className="text-yellow-500">Sample</span>
                               <span className="text-white">Text</span>
@@ -582,9 +597,91 @@ function ProcessingPage() {
               </AnimatePresence>
             </motion.div>
 
+            {/* B-roll Enable/Disable Panel */}
+            <motion.div layout>
+              <motion.button
+                layout
+                onClick={toggleBrollPanel}
+                className={`w-full p-3 sm:p-4 cyber-border backdrop-blur-xl transition-colors duration-300 rounded-xl
+                          ${highlightType ? 'bg-purple-900/30 hover:bg-purple-800/40 cursor-pointer' : 'bg-purple-900/10 cursor-not-allowed'}`}
+                disabled={!highlightType}
+              >
+                <motion.div layout className="flex items-center justify-between">
+                  <motion.h2 layout className="text-lg sm:text-xl font-semibold text-purple-100">
+                    B-roll
+                  </motion.h2>
+                  {brollEnabled !== null && (
+                    <motion.span layout className="text-xs sm:text-sm text-purple-300">
+                      {brollEnabled ? 'Enabled' : 'Disabled'}
+                    </motion.span>
+                  )}
+                </motion.div>
+              </motion.button>
+
+              <AnimatePresence mode="wait">
+                {isBrollPanelOpen && (
+                  <motion.div
+                    layout
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ 
+                      opacity: 1,
+                      height: 'auto',
+                      transition: {
+                        type: "spring",
+                        stiffness: 70,
+                        damping: 15
+                      }
+                    }}
+                    exit={{ 
+                      opacity: 0,
+                      height: 0,
+                      transition: {
+                        type: "spring",
+                        stiffness: 70,
+                        damping: 15
+                      }
+                    }}
+                    className="overflow-hidden"
+                  >
+                    <motion.div layout className="space-y-3 mt-4">
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                        <button
+                          onClick={() => handleBrollSelect(true)}
+                          className={`p-3 sm:p-4 rounded-xl cyber-border transition-all duration-300 ${
+                            brollEnabled 
+                              ? 'bg-purple-600/50 border-purple-400' 
+                              : 'bg-purple-900/30 hover:bg-purple-800/40'
+                          }`}
+                        >
+                          <div className="text-purple-100 font-medium mb-2 text-sm sm:text-base">Enabled</div>
+                          <div className="text-xs sm:text-sm text-purple-300">
+                            Add dynamic b-roll footage to enhance your video with additional visual content
+                          </div>
+                        </button>
+
+                        <button
+                          onClick={() => handleBrollSelect(false)}
+                          className={`p-3 sm:p-4 rounded-xl cyber-border transition-all duration-300 ${
+                            !brollEnabled 
+                              ? 'bg-purple-600/50 border-purple-400' 
+                              : 'bg-purple-900/30 hover:bg-purple-800/40'
+                          }`}
+                        >
+                          <div className="text-purple-100 font-medium mb-2 text-sm sm:text-base">Disabled</div>
+                          <div className="text-xs sm:text-sm text-purple-300">
+                            Keep your original video footage without additional b-roll content
+                          </div>
+                        </button>
+                      </div>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+
             {/* Process Button */}
             <AnimatePresence mode="wait">
-              {selectedFont && selectedColor && !isColorPanelOpen && (
+              {selectedFont && selectedColor && highlightType && brollEnabled !== null && !isBrollPanelOpen && (
                 <motion.button
                   layout
                   initial={{ opacity: 0, y: 20 }}
@@ -592,8 +689,8 @@ function ProcessingPage() {
                   exit={{ opacity: 0, y: 20 }}
                   onClick={handleProcessVideo}
                   disabled={isProcessing}
-                  className="w-full p-6 rounded-xl cyber-border backdrop-blur-xl bg-purple-600/30 hover:bg-purple-500/40 
-                           transition-all duration-300 text-purple-100 text-xl font-semibold disabled:opacity-50 
+                  className="w-full p-4 sm:p-6 rounded-xl cyber-border backdrop-blur-xl bg-purple-600/30 hover:bg-purple-500/40 
+                           transition-all duration-300 text-purple-100 text-lg sm:text-xl font-semibold disabled:opacity-50 
                            disabled:cursor-not-allowed"
                   whileHover={{ scale: isProcessing ? 1 : 1.02 }}
                   transition={{ type: "spring", stiffness: 400, damping: 25 }}
