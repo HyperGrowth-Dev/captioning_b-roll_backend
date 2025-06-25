@@ -103,12 +103,18 @@ Pull changes from Github and merge them
 git checkout main
 git fetch origin
 git checkout ec2
-git merge origin/[filename]
+git merge origin/[branchname]
 ```
 fix merge issues then use git add and commit
 
 
 Next, to actually push the changes to the website:
+if changes were made on front end, first run the build:
+```bash 
+cd frontend
+npm run build
+```
+then run this:
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl restart vid_editor
