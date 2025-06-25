@@ -124,6 +124,8 @@ function ProcessingPage() {
   const [isHighlightPanelOpen, setIsHighlightPanelOpen] = useState(false);
   const [brollEnabled, setBrollEnabled] = useState(null);
   const [isBrollPanelOpen, setIsBrollPanelOpen] = useState(false);
+  const [currentStage, setCurrentStage] = useState(null);
+  const [stageProgress, setStageProgress] = useState(0);
 
   // Set video URL when file is received
   useEffect(() => {
@@ -201,6 +203,8 @@ function ProcessingPage() {
       setProcessingError(null);
       setProcessedVideoUrl(null);
       setShowProcessedVideo(false);
+      setCurrentStage('upload');
+      setStageProgress(0);
 
       // Get video dimensions from videoRef
       const videoWidth = videoRef.current?.videoWidth || 607;
@@ -208,20 +212,41 @@ function ProcessingPage() {
 
       // Step 1: Upload video to S3
       console.log('Starting video upload...');
-      const { key: inputKey } = await uploadVideo(selectedFile);
+      setProcessingStatus('Uploading video to cloud storage...');
+      
+      // Upload with real progress tracking
+      const { key: inputKey } = await uploadVideo(selectedFile, (progress) => {
+        setStageProgress(progress);
+      });
       console.log('Video uploaded successfully with key:', inputKey);
 
-      // Step 2: Process video
+      // Step 2: Process video (Caption generation)
       console.log('Starting video processing...');
-      const processData = await processVideo(inputKey, {
-        font: selectedFont.family,
-        color: selectedColor.value,
-        font_size: fontSize,
-        highlight_type: highlightType,
-        video_width: videoWidth,
-        video_height: videoHeight,
-        broll_enabled: brollEnabled
-      });
+      setCurrentStage('caption');
+      setStageProgress(0);
+      setProcessingStatus('Generating captions and processing video...');
+
+      const processData = await processVideo(
+        inputKey, 
+        {
+          font: selectedFont.family,
+          color: selectedColor.value,
+          font_size: fontSize,
+          highlight_type: highlightType,
+          video_width: videoWidth,
+          video_height: videoHeight,
+          broll_enabled: brollEnabled
+        },
+        (captionProgress) => {
+          setStageProgress(captionProgress);
+        },
+        (renderingProgress) => {
+          // Transition to rendering stage immediately when rendering starts
+          setCurrentStage('rendering');
+          setProcessingStatus('Rendering final video with captions...');
+          setStageProgress(renderingProgress);
+        }
+      );
       console.log('Video processing initiated:', processData);
 
       // Navigate to results with the Remotion URL
@@ -229,6 +254,7 @@ function ProcessingPage() {
     } catch (error) {
       console.error('Error processing video:', error);
       setProcessingError(error.message || 'Failed to process video');
+      setCurrentStage('error');
     } finally {
       setIsProcessing(false);
       setProcessingStatus('');
@@ -253,6 +279,23 @@ function ProcessingPage() {
     console.log('Show processed video:', showProcessedVideo);
     console.log('Is processing:', isProcessing);
   }, [processedVideoUrl, showProcessedVideo, isProcessing]);
+
+  const getStageInfo = (stage) => {
+    switch (stage) {
+      case 'upload':
+        return { name: 'Upload', color: 'bg-blue-500' };
+      case 'caption':
+        return { name: 'Caption Processing', color: 'bg-green-500' };
+      case 'rendering':
+        return { name: 'Rendering', color: 'bg-orange-500' };
+      case 'complete':
+        return { name: 'Complete', color: 'bg-green-600' };
+      case 'error':
+        return { name: 'Error', color: 'bg-red-500' };
+      default:
+        return { name: 'Processing', color: 'bg-gray-500' };
+    }
+  };
 
   return (
     <div className="min-h-screen flex flex-col lg:flex-row bg-purple-950">
@@ -317,6 +360,54 @@ function ProcessingPage() {
                   <div className="loading-dot"></div>
                   <div className="loading-dot"></div>
                   <div className="loading-dot"></div>
+                </div>
+              </div>
+            )}
+
+            {/* Loading Bar Overlay */}
+            {isProcessing && currentStage && (
+              <div className="absolute inset-0 bg-black/80 flex items-center justify-center p-6">
+                <div className="bg-purple-900/90 backdrop-blur-xl rounded-xl p-6 w-full max-w-md space-y-4">
+                  {/* Stage Info */}
+                  <div className="text-center">
+                    <div className="flex items-center justify-center space-x-2 mb-2">
+                      <div className={`w-3 h-3 rounded-full ${getStageInfo(currentStage).color}`}></div>
+                      <h3 className="text-purple-100 font-semibold text-lg">
+                        {getStageInfo(currentStage).name}
+                      </h3>
+                    </div>
+                    <p className="text-purple-300 text-sm">{processingStatus}</p>
+                  </div>
+
+                  {/* Stage Progress Bar */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-xs text-purple-300">
+                      <span>Current Stage</span>
+                      <span>{stageProgress}%</span>
+                    </div>
+                    <div className="w-full bg-purple-800 rounded-full h-2">
+                      <div 
+                        className={`h-2 rounded-full transition-all duration-300 ${getStageInfo(currentStage).color}`}
+                        style={{ width: `${stageProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* Stage Indicators */}
+                  <div className="flex justify-between text-xs">
+                    <div className={`flex items-center space-x-1 ${currentStage === 'upload' || currentStage === 'caption' || currentStage === 'rendering' || currentStage === 'complete' ? 'text-blue-400' : 'text-purple-600'}`}>
+                      <div className={`w-2 h-2 rounded-full ${currentStage === 'upload' || currentStage === 'caption' || currentStage === 'rendering' || currentStage === 'complete' ? 'bg-blue-400' : 'bg-purple-600'}`}></div>
+                      <span>Upload</span>
+                    </div>
+                    <div className={`flex items-center space-x-1 ${currentStage === 'caption' || currentStage === 'rendering' || currentStage === 'complete' ? 'text-green-400' : 'text-purple-600'}`}>
+                      <div className={`w-2 h-2 rounded-full ${currentStage === 'caption' || currentStage === 'rendering' || currentStage === 'complete' ? 'bg-green-400' : 'bg-purple-600'}`}></div>
+                      <span>Caption</span>
+                    </div>
+                    <div className={`flex items-center space-x-1 ${currentStage === 'rendering' || currentStage === 'complete' ? 'text-orange-400' : 'text-purple-600'}`}>
+                      <div className={`w-2 h-2 rounded-full ${currentStage === 'rendering' || currentStage === 'complete' ? 'bg-orange-400' : 'bg-purple-600'}`}></div>
+                      <span>Render</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
