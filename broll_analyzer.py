@@ -9,6 +9,9 @@ import traceback
 from openai import OpenAI
 import time
 from utils import setup_logging, ensure_directory
+import base64
+from io import BytesIO
+from PIL import Image
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -59,6 +62,140 @@ class BrollAnalyzer:
 
         # Minimum time between b-roll suggestions (in seconds)
         self.min_time_between_suggestions = 5.0
+
+    def analyze_multiple_images(self, image_data_list: List[Dict], keyword: str) -> Dict:
+        """Analyze multiple images in a single OpenAI call and select the best one"""
+        try:
+            logger.debug(f"Analyzing {len(image_data_list)} images for keyword: {keyword}")
+            
+            if not image_data_list:
+                logger.warning("No images provided for analysis")
+                return {'best_index': -1, 'analysis': 'No images provided'}
+            
+            # Prepare content for OpenAI (text + all images)
+            content = [
+                {
+                    "type": "text", 
+                    "text": f"""Analyze these {len(image_data_list)} images and determine which one best matches the keyword: "{keyword}"
+
+Consider for each image:
+1. Overall relevance to the keyword 
+2. Subject matter and context
+3. Visual content and composition
+
+Compare all images and select the ONE that best represents the keyword. Consider:
+- How clearly the image shows the concept
+- How well it would work as b-roll footage
+- Emotional/contextual fit
+
+Respond in JSON format with:
+{{
+    "best_image_index": int (0-based index of the best image),
+    "comparison_analysis": "string (brief explanation of why this image is the best choice)"
+}}
+
+The best_image_index should be the 0-based index of the image that best matches the keyword."""
+                }
+            ]
+            
+            # Add all images to the content
+            for i, image_data in enumerate(image_data_list):
+                content.append({
+                    "type": "image_url",
+                    "image_url": {
+                        "url": f"data:image/jpeg;base64,{image_data['base64']}"
+                    }
+                })
+            
+            # Make the API call
+            try:
+                response = self.openai_client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=[{"role": "user", "content": content}],
+                    max_tokens=800,
+                    temperature=0.1
+                )
+                
+                content_response = response.choices[0].message.content.strip()
+                logger.info(f"OpenAI multi-image analysis response: {content_response}")
+                
+                # Parse JSON response
+                try:
+                    # Extract JSON from response
+                    start = content_response.find('{')
+                    end = content_response.rfind('}') + 1
+                    if start != -1 and end != 0:
+                        json_str = content_response[start:end]
+                        result = json.loads(json_str)
+                    else:
+                        result = json.loads(content_response)
+                    
+                    logger.debug(f"Multi-image analysis result: {result}")
+                    return result
+                    
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse OpenAI multi-image response: {str(e)}")
+                    logger.error(f"Raw response: {content_response}")
+                    # Fallback: return first image as best
+                    return {
+                        'best_image_index': 0,
+                        'comparison_analysis': 'Failed to parse analysis, using first image',
+                        'overall_confidence': 0.5,
+                        'individual_scores': []
+                    }
+                    
+            except Exception as e:
+                logger.error(f"OpenAI multi-image API call failed: {str(e)}")
+                return {
+                    'best_image_index': 0,
+                    'comparison_analysis': 'API call failed, using first image',
+                    'overall_confidence': 0.5,
+                    'individual_scores': []
+                }
+                
+        except Exception as e:
+            logger.error(f"Error in analyze_multiple_images: {str(e)}")
+            return {
+                'best_image_index': 0,
+                'comparison_analysis': 'Analysis failed, using first image',
+                'overall_confidence': 0.5,
+                'individual_scores': []
+            }
+
+    def download_and_process_image(self, image_url: str) -> Dict:
+        """Download and process a single image for analysis"""
+        try:
+            # Download the image
+            response = requests.get(image_url, timeout=10)
+            response.raise_for_status()
+            image_data = response.content
+            
+            # Convert image to base64
+            image = Image.open(BytesIO(image_data))
+            # Resize if too large (OpenAI has size limits)
+            max_size = 1024
+            if max(image.size) > max_size:
+                image.thumbnail((max_size, max_size), Image.Resampling.LANCZOS)
+            
+            # Convert to base64
+            buffer = BytesIO()
+            image.save(buffer, format='JPEG', quality=85)
+            image_base64 = base64.b64encode(buffer.getvalue()).decode('utf-8')
+            
+            return {
+                'url': image_url,
+                'base64': image_base64,
+                'success': True
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to download/process image from {image_url}: {str(e)}")
+            return {
+                'url': image_url,
+                'base64': None,
+                'success': False,
+                'error': str(e)
+            }
 
     def get_keywords_from_openai(self, text: str, video_duration: float = None) -> List[Dict[str, float]]:
         """Use OpenAI to analyze text and suggest keywords for b-roll footage"""
@@ -116,9 +253,6 @@ class BrollAnalyzer:
                         keywords = result['keywords']
                     else:
                         keywords = result  # Assume the model returned the array directly
-                    # keywords = [{'keyword': 'sunrise', 'timestamp': 12.13, 'confidence': 0.9, 'explanation': 'Visual of sunrise aligning with waking up with the sun'}, 
-                    #             {'keyword': 'sunrise', 'timestamp': 21.2, 'confidence': 0.8, 'explanation': 'Footage of fluorescent lights representing artificial lighting disrupting sleep patterns'}, 
-                    #             {'keyword': 'sunrise', 'timestamp': 36.33, 'confidence': 0.85, 'explanation': 'Clip showing someone being exposed to daylight for regulating circadian rhythm'}]
                     logger.info(f"OpenAI suggested keywords: {keywords}")
                     return keywords
                 except json.JSONDecodeError as json_error:
@@ -190,13 +324,17 @@ class BrollAnalyzer:
                 )
                 
                 if broll_results:
+                    # Get the best video from the analyzed results
+                    best_video = self.get_best_broll_video(broll_results, keyword)
+                    
                     final_suggestion = {
                         'timestamp': timestamp,
                         'duration': 3.0,
                         'keyword': keyword,
                         'confidence': confidence,
                         'context': explanation,
-                        'broll_options': broll_results[:3]
+                        'best_broll': best_video,
+                        'broll_options': broll_results[:3]  # Keep top 3 for reference
                     }
                     final_suggestions.append(final_suggestion)
                     logger.info(f"Added b-roll suggestion at {timestamp:.2f}s with keyword: {keyword}")
@@ -230,7 +368,7 @@ class BrollAnalyzer:
                     f"{self.pexels_base_url}/search",
                     params={
                         "query": keyword,
-                        "per_page": 15,  # Increased to get more options to filter
+                        "per_page": 10,  # Increased to get more options to filter
                         "orientation": orientation
                     },
                     headers=headers
@@ -254,8 +392,11 @@ class BrollAnalyzer:
                 logger.warning(f"No videos found for keyword: {keyword}")
                 return []
             
-            # Filter and process videos
+            # Filter and process videos with multi-image analysis
             filtered_videos = []
+            videos_with_images = []
+            
+            # First pass: collect all videos and their images
             for video in videos:
                 try:
                     # Get the highest quality video file
@@ -271,11 +412,6 @@ class BrollAnalyzer:
                     fps_match = re.search(r'(\d+)fps', video_file.get('link', ''))
                     video_fps = int(fps_match.group(1)) if fps_match else None
                     
-                    # Skip if FPS doesn't match target
-                    # if rounded_fps and video_fps and video_fps != rounded_fps:
-                    #     logger.debug(f"Skipping video with FPS {video_fps} (doesn't match target {rounded_fps})")
-                    #     continue
-                    
                     # Skip if video is too short
                     if video.get('duration', 0) < duration:
                         logger.debug(f"Skipping video with duration {video.get('duration')}s (too short)")
@@ -289,27 +425,182 @@ class BrollAnalyzer:
                         logger.debug("Skipping portrait video (landscape requested)")
                         continue
                     
-                    # Add video to filtered list
-                    filtered_videos.append({
+                    # Get video thumbnail for analysis
+                    image_url = video.get('image', '')
+                    if not image_url:
+                        # Try to get image from video_files
+                        for vf in video_files:
+                            if vf.get('file_type', '').startswith('image'):
+                                image_url = vf.get('link', '')
+                                break
+                    
+                    # Create video object
+                    video_obj = {
                         'id': video.get('id'),
                         'url': video_file.get('link'),
                         'width': video_file.get('width'),
                         'height': video_file.get('height'),
                         'duration': video.get('duration'),
-                        'fps': video_fps
-                    })
+                        'fps': video_fps,
+                        'image_url': image_url,
+                        'video_index': len(videos_with_images)  # Track original position
+                    }
+                    
+                    videos_with_images.append(video_obj)
                     
                 except Exception as e:
                     logger.error(f"Error processing video: {str(e)}")
                     continue
             
-            logger.info(f"Found {len(filtered_videos)} matching videos after filtering")
+            if not videos_with_images:
+                logger.warning("No videos passed initial filtering")
+                return []
+            
+            # Download and process all images
+            logger.info(f"Downloading and processing {len(videos_with_images)} images for analysis")
+            image_data_list = []
+            valid_video_indices = []
+            
+            for i, video in enumerate(videos_with_images):
+                if video['image_url']:
+                    image_data = self.download_and_process_image(video['image_url'])
+                    if image_data['success']:
+                        image_data_list.append(image_data)
+                        valid_video_indices.append(i)
+                        logger.debug(f"Successfully processed image {i+1}/{len(videos_with_images)}")
+                    else:
+                        logger.warning(f"Failed to process image for video {video['id']}: {image_data.get('error', 'Unknown error')}")
+                else:
+                    logger.warning(f"No image URL for video {video['id']}")
+            
+            # Analyze all images together if we have any
+            if image_data_list:
+                logger.info(f"Analyzing {len(image_data_list)} images with OpenAI Vision")
+                analysis_result = self.analyze_multiple_images(image_data_list, keyword)
+                
+                # Process the analysis results
+                best_index = analysis_result.get('best_image_index', 0)
+                comparison_analysis = analysis_result.get('comparison_analysis', 'No analysis available')
+                overall_confidence = analysis_result.get('overall_confidence', 0.5)
+                individual_scores = analysis_result.get('individual_scores', [])
+                
+                logger.info(f"Analysis complete. Best image index: {best_index}")
+                logger.info(f"Overall confidence: {overall_confidence:.3f}")
+                logger.info(f"Comparison analysis: {comparison_analysis}")
+                
+                # Create a mapping from analysis index to video index
+                analysis_to_video_map = {}
+                for i, video_idx in enumerate(valid_video_indices):
+                    analysis_to_video_map[i] = video_idx
+                
+                # Find the best video based on analysis
+                if best_index in analysis_to_video_map:
+                    best_video_index = analysis_to_video_map[best_index]
+                    best_video = videos_with_images[best_video_index]
+                    
+                    # Add analysis data to the best video
+                    best_video.update({
+                        'relevance_score': 1.0,  # Best video gets highest score
+                        'confidence': overall_confidence,
+                        'analysis': comparison_analysis,
+                        'is_best_match': True
+                    })
+                    
+                    # Add analysis data to other videos
+                    for i, video_idx in enumerate(valid_video_indices):
+                        if i != best_index:
+                            video = videos_with_images[video_idx]
+                            # Find individual score if available
+                            individual_score = next((score for score in individual_scores if score.get('index') == i), None)
+                            
+                            video.update({
+                                'relevance_score': individual_score.get('relevance_score', 0.5) if individual_score else 0.5,
+                                'confidence': overall_confidence,
+                                'analysis': individual_score.get('brief_analysis', 'Analyzed but not selected as best') if individual_score else 'Analyzed but not selected as best',
+                                'is_best_match': False
+                            })
+                    
+                    # Add default analysis for videos without images
+                    for i, video in enumerate(videos_with_images):
+                        if i not in valid_video_indices:
+                            video.update({
+                                'relevance_score': 0.3,
+                                'confidence': 0.0,
+                                'analysis': 'No image available for analysis',
+                                'is_best_match': False
+                            })
+                    
+                    # Sort videos by relevance score (best video first)
+                    videos_with_images.sort(key=lambda x: x.get('relevance_score', 0), reverse=True)
+                    
+                    # Filter out videos with very low relevance scores
+                    min_relevance_threshold = 0.3
+                    filtered_videos = [
+                        video for video in videos_with_images 
+                        if video.get('relevance_score', 0) >= min_relevance_threshold
+                    ]
+                    
+                    logger.info(f"Found {len(filtered_videos)} videos with relevance score >= {min_relevance_threshold}")
+                    logger.info(f"Best video ID: {best_video['id']} (Score: {best_video['relevance_score']:.3f})")
+                    
+                else:
+                    logger.error(f"Best image index {best_index} not found in valid video indices")
+                    # Fallback: return all videos with default scores
+                    for video in videos_with_images:
+                        video.update({
+                            'relevance_score': 0.5,
+                            'confidence': 0.0,
+                            'analysis': 'Analysis failed, using default score',
+                            'is_best_match': False
+                        })
+                    filtered_videos = videos_with_images
+                    
+            else:
+                logger.warning("No images could be processed for analysis")
+                # Fallback: return all videos with default scores
+                for video in videos_with_images:
+                    video.update({
+                        'relevance_score': 0.5,
+                        'confidence': 0.0,
+                        'analysis': 'No image available for analysis',
+                        'is_best_match': False
+                    })
+                filtered_videos = videos_with_images
+            
             return filtered_videos
             
         except Exception as e:
             logger.error(f"Error in search_broll: {str(e)}")
             logger.error(f"Error details: {traceback.format_exc()}")
             return []
+
+    def get_best_broll_video(self, videos: List[Dict], keyword: str) -> Dict:
+        """Select the best b-roll video from a list of analyzed videos"""
+        if not videos:
+            return None
+        
+        # Find the video marked as best match, or get the highest scored one
+        best_video = None
+        
+        # First, try to find the video marked as best match
+        for video in videos:
+            if video.get('is_best_match', False):
+                best_video = video
+                break
+        
+        # If no best match found, get the highest scored video
+        if not best_video:
+            sorted_videos = sorted(videos, key=lambda x: x.get('relevance_score', 0), reverse=True)
+            best_video = sorted_videos[0]
+        
+        logger.info(f"Selected best video for keyword '{keyword}':")
+        logger.info(f"  - Video ID: {best_video.get('id')}")
+        logger.info(f"  - Relevance Score: {best_video.get('relevance_score', 0):.3f}")
+        logger.info(f"  - Confidence: {best_video.get('confidence', 0):.3f}")
+        logger.info(f"  - Is Best Match: {best_video.get('is_best_match', False)}")
+        logger.info(f"  - Analysis: {best_video.get('analysis', 'No analysis')}")
+        
+        return best_video
 
     def analyze_transcript(self, segments: List[Dict], fps: float = 30.0) -> Dict:
         """Analyze entire transcript and return b-roll suggestions"""
@@ -355,6 +646,7 @@ class BrollAnalyzer:
                         'keyword': suggestion['keyword'],
                         'confidence': suggestion['confidence'],
                         'context': suggestion['context'],
+                        'best_broll': suggestion.get('best_broll', {}),
                         'broll_options': suggestion['broll_options']
                     }
                     for suggestion in analysis['broll_suggestions']
