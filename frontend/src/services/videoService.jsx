@@ -105,7 +105,7 @@ export const processVideo = async (inputKey, options, onCaptionProgress, onRende
     
     while (!isComplete && pollCount < maxPolls) {
       try {
-        const { data: progressData } = await axios.get(`${API_URL}/progress/${data.renderId}`);
+        const { data: progressData } = await axios.get(`${API_URL}/check_progress/${data.renderId}`);
         console.log('Progress check:', progressData);
         
         // Use the actual progress from Remotion if available, otherwise calculate based on poll count

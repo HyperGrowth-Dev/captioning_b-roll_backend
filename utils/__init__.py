@@ -1,6 +1,6 @@
 # This file makes the utils directory a Python package 
 
-from .utils import setup_logging, ensure_directory
+from .logging import setup_logging, ensure_directory
 from .ffmpeg_utils import FFmpegUtils
 from .temp_dir_manager import TempDirManager
 

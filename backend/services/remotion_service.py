@@ -7,7 +7,7 @@ from remotion_lambda import RemotionClient, RenderMediaParams, Privacy, ValidSti
 from dotenv import load_dotenv
 from typing import Dict, Any
 from broll_analyzer import BrollAnalyzer
-from utils.ffmpeg_utils import FFmpegUtils
+from utils import FFmpegUtils
 
 # Configure logging
 logger = logging.getLogger(__name__)

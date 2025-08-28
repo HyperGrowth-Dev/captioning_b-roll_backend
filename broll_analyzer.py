@@ -86,7 +86,7 @@ Consider for each image:
 Compare all images and select the ONE that best represents the keyword. Consider:
 - How clearly the image shows the concept
 - How well it would work as b-roll footage
-- Emotional/contextual fit
+- contextual fit
 
 Respond in JSON format with:
 {{

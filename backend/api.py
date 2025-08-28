@@ -6,7 +6,7 @@ import json
 import logging
 from backend.services.remotion_service import RemotionService
 from backend.services.s3_service import S3Service
-from utils.ffmpeg_utils import FFmpegUtils
+from utils import FFmpegUtils
 import os
 import uuid
 from pydantic import BaseModel
@@ -270,7 +270,7 @@ async def process_video(
         logger.error(f"Error processing video: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/progress/{render_id}")
+@app.get("/api/check_progress/{render_id}")
 async def check_progress(render_id: str):
     try:
         result = remotion_service.check_progress(render_id)

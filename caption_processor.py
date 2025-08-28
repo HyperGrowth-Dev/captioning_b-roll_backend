@@ -145,7 +145,7 @@ class CaptionProcessor:
         return caption_clips
 
     def save_transcript(self, segments, output_dir='output'):
-        """Save transcript to a text file"""
+        """Save transcript to a text file. This is used for debugging purposes"""
         try:
             os.makedirs(output_dir, exist_ok=True)
             transcript_path = os.path.join(output_dir, 'transcript.txt')

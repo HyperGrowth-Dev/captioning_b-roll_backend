@@ -7,8 +7,7 @@ import tempfile
 import logging
 from caption_processor import CaptionProcessor
 from broll_analyzer import BrollAnalyzer
-from utils import setup_logging, ensure_directory, TempDirManager
-from utils.ffmpeg_utils import FFmpegUtils
+from utils import setup_logging, ensure_directory, TempDirManager, FFmpegUtils
 import traceback
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
@@ -32,7 +31,7 @@ logging.getLogger('botocore').setLevel(logging.WARNING)
 logging.getLogger('urllib3').setLevel(logging.WARNING)
 
 # Initialize logger
-logger = setup_logging(__name__, 'video_processor.log')
+logger = setup_logging(__name__)
 
 def print_broll_analysis(analysis: dict, output_file: str = 'broll_suggestions.txt'):
     """Print b-roll analysis in a readable format to a text file"""
