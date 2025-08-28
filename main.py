@@ -1,5 +1,5 @@
 import os
-from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip
+from moviepy.editor import VideoFileClip, CompositeVideoClip, ColorClip, TextClip
 from moviepy.video.fx.all import resize, fadein, fadeout
 import requests
 from dotenv import load_dotenv
@@ -7,16 +7,31 @@ import tempfile
 import logging
 from caption_processor import CaptionProcessor
 from broll_analyzer import BrollAnalyzer
-from utils import setup_logging, ensure_directory, TempDirManager
+from utils import setup_logging, ensure_directory, TempDirManager, FFmpegUtils
 import traceback
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+import asyncio
+from backend.services.remotion_service import RemotionService
+import argparse
+import sys
 
 # Load environment variables
 load_dotenv()
 
+# Configure root logger
+logging.basicConfig(
+    level=logging.DEBUG,  # Changed to DEBUG level for more detailed logging
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
+# Set boto3 and botocore to WARNING level to reduce noise
+logging.getLogger('boto3').setLevel(logging.WARNING)
+logging.getLogger('botocore').setLevel(logging.WARNING)
+logging.getLogger('urllib3').setLevel(logging.WARNING)
+
 # Initialize logger
-logger = setup_logging(__name__, 'video_processor.log')
+logger = setup_logging(__name__)
 
 def print_broll_analysis(analysis: dict, output_file: str = 'broll_suggestions.txt'):
     """Print b-roll analysis in a readable format to a text file"""
@@ -62,183 +77,202 @@ def print_broll_analysis(analysis: dict, output_file: str = 'broll_suggestions.t
         logger.error(f"Error printing b-roll analysis: {str(e)}")
         logger.error(f"Analysis content: {analysis}")
 
-class VideoProcessor:
-    def __init__(self):
-        logger.info("Initializing VideoProcessor")
-        self.caption_processor = CaptionProcessor()
-        pexels_key = os.getenv('PEXELS_API_KEY')
-        if not pexels_key:
-            logger.error("PEXELS_API_KEY not found in environment variables")
-            raise ValueError("PEXELS_API_KEY is required")
-        self.broll_analyzer = BrollAnalyzer(pexels_key)
-        self.temp_manager = TempDirManager()
-        logger.info("Initialized temporary directory manager")
+# class VideoProcessor:
+#     def __init__(self):
+#         logger.info("Initializing VideoProcessor")
+#         self.caption_processor = CaptionProcessor(fps=30)  # Set default fps to 30
+#         pexels_key = os.getenv('PEXELS_API_KEY')
+#         if not pexels_key:
+#             logger.error("PEXELS_API_KEY not found in environment variables")
+#             raise ValueError("PEXELS_API_KEY is required")
+#         self.broll_analyzer = BrollAnalyzer(pexels_key)
+#         self.temp_manager = TempDirManager()
+#         logger.info("Initialized temporary directory manager")
 
-    def download_broll_video(self, url, temp_dir):
-        """Download b-roll video from URL"""
-        try:
-            response = requests.get(url, stream=True)
-            response.raise_for_status()
+#     def download_broll_video(self, url, temp_dir):
+#         """Download b-roll video from URL"""
+#         try:
+#             response = requests.get(url, stream=True)
+#             response.raise_for_status()
             
-            # Create a temporary file for the video
-            temp_path = os.path.join(temp_dir, f'broll_{hash(url)}.mp4')
+#             # Create a temporary file for the video
+#             temp_path = os.path.join(temp_dir, f'broll_{hash(url)}.mp4')
             
-            with open(temp_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+#             with open(temp_path, 'wb') as f:
+#                 for chunk in response.iter_content(chunk_size=8192):
+#                     f.write(chunk)
             
-            return temp_path
-        except Exception as e:
-            logger.error(f"Error downloading b-roll video: {str(e)}")
-            return None
+#             return temp_path
+#         except Exception as e:
+#             logger.error(f"Error downloading b-roll video: {str(e)}")
+#             return None
 
-    def create_broll_clip(self, video_path, duration=5.0, transition_duration=0.2):
-        """Create a b-roll clip with transitions"""
-        try:
-            # Load the b-roll video
-            broll = VideoFileClip(video_path)
+#     def create_broll_clip(self, video_path, duration=5.0, transition_duration=0.2):
+#         """Create a b-roll clip with transitions"""
+#         try:
+#             # Load the b-roll video
+#             broll = VideoFileClip(video_path)
             
-            # Trim to desired duration
-            broll = broll.subclip(0, min(duration, broll.duration))
+#             # Trim to desired duration
+#             broll = broll.subclip(0, min(duration, broll.duration))
             
-            # Apply fade in/out transitions using the fx functions
-            broll = fadein(broll, transition_duration)
-            broll = fadeout(broll, transition_duration)
+#             # Apply fade in/out transitions using the fx functions
+#             broll = fadein(broll, transition_duration)
+#             broll = fadeout(broll, transition_duration)
             
-            return broll
-        except Exception as e:
-            logger.error(f"Error creating b-roll clip: {str(e)}")
-            return None
+#             return broll
+#         except Exception as e:
+#             logger.error(f"Error creating b-roll clip: {str(e)}")
+#             return None
 
-    def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=48):
-        """Process a video file with custom font and color settings"""
-        try:
-            # Load video
-            video = VideoFileClip(input_path)
-            main_width, main_height = video.w, video.h
-            video_duration = video.duration
+#     async def process_video(self, input_path, font="Montserrat-Bold", color="white", font_size=32):
+#         """Process a video file with custom font and color settings"""
+#         try:
+#             # Get video info using FFmpeg
+#             main_width, main_height, video_duration = FFmpegUtils.get_video_info(input_path)
             
-            # Extract audio
-            audio = video.audio
-            audio_path = "temp/audio.wav"
-            audio.write_audiofile(audio_path)
+#             # Extract audio using FFmpeg
+#             audio_path = "temp/audio.wav"
+#             os.makedirs("temp", exist_ok=True)
+#             FFmpegUtils.extract_audio(input_path, audio_path)
             
-            # Generate captions
-            segments = self.caption_processor.generate_captions(audio_path)
+#             # Generate captions
+#             segments = self.caption_processor.generate_captions(audio_path)
             
-            # Create caption clips with custom settings
-            caption_clips = self.caption_processor.create_caption_clips(
-                segments, 
-                main_width,
-                main_height,
-                font=font,
-                color=color,
-                font_size=font_size
-            )
+#             # Get b-roll suggestions
+#             broll_suggestions = self.broll_analyzer.get_broll_suggestions(
+#                 segments,
+#                 video_duration=video_duration,
+#                 video_width=main_width,
+#                 video_height=main_height
+#             )
             
-            # Get b-roll suggestions from transcript segments
-            broll_suggestions = {
-                'broll_suggestions': self.broll_analyzer.get_broll_suggestions(
-                    segments, 
-                    video_duration,
-                    video_width=main_width,
-                    video_height=main_height
-                )
-            }
-            
-            # Save b-roll analysis in both formats
-            #print_broll_analysis(broll_suggestions)  # Save as text file
-            self.broll_analyzer.save_analysis(broll_suggestions)  # Save as JSON
-            
-            # Create a temporary directory for b-roll videos
-            temp_dir = self.temp_manager.create_temp_dir(prefix='broll_')
-            
-            # Create clips list starting with main video
-            all_clips = [(video, 0)]  # Main video with z_index 0
-            
-            # Add b-roll clips at suggested timestamps
-            if broll_suggestions and 'broll_suggestions' in broll_suggestions:
-                for suggestion in broll_suggestions['broll_suggestions']:
-                    timestamp = suggestion['timestamp']
-                    duration = 3.0  # Fixed duration of 3 seconds
+#             # Download and process b-roll clips
+#             broll_clips = []
+#             for suggestion in broll_suggestions:
+#                 if suggestion['broll_options']:
+#                     # Get the first b-roll option
+#                     broll_option = suggestion['broll_options'][0]
                     
-                    # Skip if timestamp is beyond video duration
-                    if timestamp >= video_duration:
-                        logger.warning(f"Skipping b-roll at timestamp {timestamp}s as it's beyond video duration ({video_duration}s)")
-                        continue
+#                     # Download the b-roll video
+#                     temp_dir = "temp/broll"
+#                     os.makedirs(temp_dir, exist_ok=True)
+#                     broll_path = self.download_broll_video(broll_option['url'], temp_dir)
                     
-                    # Adjust duration if it would exceed video end
-                    if timestamp + duration > video_duration:
-                        duration = video_duration - timestamp
-                        logger.info(f"Adjusted b-roll duration to {duration}s to fit within video")
-                    
-                    # Download the first b-roll option
-                    if suggestion['broll_options']:
-                        broll_url = suggestion['broll_options'][0]['url']
-                        broll_path = self.download_broll_video(broll_url, temp_dir)
-                        
-                        if broll_path:
-                            # Create b-roll clip with transitions
-                            broll_clip = self.create_broll_clip(
-                                broll_path,
-                                duration=duration,
-                                transition_duration=0.2  # Quick transitions
-                            )
-                            
-                            if broll_clip:
-                                # Resize b-roll to match main video dimensions
-                                broll_clip = resize(broll_clip, width=main_width, height=main_height)
-                                
-                                # Set the start time for the b-roll clip
-                                broll_clip = broll_clip.set_start(timestamp)
-                                
-                                # Add b-roll clip to the list with z_index
-                                all_clips.append((broll_clip, 1))  # B-roll clip with z_index 1
+#                     if broll_path:
+#                         # Convert to Remotion format
+#                         broll_clips.append({
+#                             'url': broll_path,
+#                             'startFrame': int(suggestion['timestamp'] * 30),  # Assuming 30fps
+#                             'endFrame': int((suggestion['timestamp'] + suggestion['duration']) * 30),
+#                             'transitionDuration': 15  # 0.5s transition at 30fps
+#                         })
             
-            # Create the final composite video with z_index
-            final_video = CompositeVideoClip(
-                [clip for clip, _ in all_clips] + caption_clips,
-                size=(main_width, main_height)
-            )
+#             # Create caption clips with custom settings
+#             caption_data = self.caption_processor.create_caption_clips(
+#                 segments, 
+#                 main_width,
+#                 main_height,
+#                 font=font,
+#                 color=color,
+#                 font_size=font_size
+#             )
             
-            # Set the audio from the main video
-            final_video = final_video.set_audio(audio)
+#             # Initialize RemotionService
+#             remotion_service = RemotionService()
             
-            # Save processed video
-            output_path = os.path.join('output', 'processed_video.mp4')
-            final_video.write_videofile(
-                output_path,
-                codec='libx264',
-                audio_codec='aac',
-                temp_audiofile='temp/temp-audio.m4a',
-                remove_temp=True
-            )
+#             # Process video with Remotion
+#             settings = {
+#                 'font': font,
+#                 'color': color,
+#                 'fontSize': font_size,
+#                 'fps': 30,
+#                 'position': 0.7,
+#                 'maxWidth': main_width * 0.8,
+#                 'highlightColor': '#FFD700',
+#                 'videoUrl': input_path,
+#                 'brollClips': broll_clips  # Add b-roll clips to settings
+#             }
             
-            # Clean up
-            video.close()
-            final_video.close()
-            os.remove(audio_path)
+#             output_url = await remotion_service.process_video(
+#                 input_path,
+#                 settings
+#             )
             
-            return output_path
+#             # Clean up
+#             os.remove(audio_path)
+#             for clip in broll_clips:
+#                 if os.path.exists(clip['url']):
+#                     os.remove(clip['url'])
             
-        except Exception as e:
-            logger.error(f"Error processing video: {str(e)}")
-            raise
+#             return output_url
+            
+#         except Exception as e:
+#             logger.error(f"Error processing video: {str(e)}")
+#             raise
 
-def main():
-    processor = VideoProcessor()
-    
-    # Process all videos in the input directory
-    input_dir = 'input'
-    for filename in os.listdir(input_dir):
-        if filename.endswith(('.mp4', '.avi', '.mov')):
-            input_path = os.path.join(input_dir, filename)
-            print(f"\nProcessing {filename}...")
-            processor.process_video(input_path)
-            break  # Only process the first video
+async def debug_process_video(input_path: str, font: str = "Montserrat-Bold", color: str = "white", font_size: int = 32):
+    """Debug function to process a single video with detailed logging"""
+    try:
+        logger.info(f"Starting debug process for video: {input_path}")
+        
+        # Step 1: Get video info
+        logger.info("Step 1: Getting video info...")
+        video_width, video_height, video_duration, fps = FFmpegUtils.get_video_info(input_path)
+        logger.debug(f"Video dimensions: {video_width}x{video_height}, duration: {video_duration}s, fps: {fps}")
+        
+        # Step 2: Extract audio
+        logger.info("Step 2: Extracting audio...")
+        audio_path = "temp/audio.wav"
+        os.makedirs("temp", exist_ok=True)
+        FFmpegUtils.extract_audio(input_path, audio_path)
+        logger.debug(f"Audio extracted to: {audio_path}")
+        
+        # Step 3: Generate captions
+        caption_processor = CaptionProcessor(fps=fps)  # Pass the actual FPS
+        segments = caption_processor.generate_captions(audio_path)
+        
+        # Create caption clips
+        caption_clips = caption_processor.create_caption_clips(
+            segments,
+            video_width=video_width,
+            video_height=video_height,
+            font=font,
+            color=color,
+            font_size=font_size
+        )
+        video_url = "https://hyper-editor.s3.us-east-2.amazonaws.com/uploads/d2025482-4a7b-4f4b-b055-72e29fffb1c2.mp4?response-content-disposition=inline&X-Amz-Content-Sha256=UNSIGNED-PAYLOAD&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEBwaCXVzLWVhc3QtMiJHMEUCIFbwr6i4Vslhk7wNe0liGlBYtdkmtDJ7zLxZHrPcT7WiAiEA6Uc%2BggZR44JptFDrUkUAxuFkc90B02u2NuUWK1YIHjoqwgMI9f%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FARAAGgw4ODg1NzcwNDMwMDMiDCwRJuwauIv%2FuIsJhCqWAx%2Bsl8bzrHRcIKateGQigBOaO7ngGx7EWsJAcs%2B7Msk3o9i1fYDYcEMFcwygLP%2FGOzlxRXfrfg5gVMLS97uXjAKs96OTg6mSzaWCvn1hyXCDkHiR9Fhn5egtlsM2pjB2fNBFdLj3BIz7mQ5idx3vz%2FpZijpazZd6t%2FqjWWSwUdkMbkRD%2FI75tfRnOmQQS1SWi8dXmVW2PjuzEiG7nlsXedgwjekJ0FZcvwPTaGkgBChfgll8g4oeMtz1HLleUdJYtDqAkgr0uPTj1Efa%2FeXxjVvzMMuZn3Ys5V9mOTq6N5yrf5zZHA%2BiaHv6xim3BcGp%2F9CHGSM1C14FPEwG1W99CH3ea%2FGR0yEBuQ0n9kwZSjT65sLa47yoy88Vg0ZkasxcMa8ax34s7lgQ%2BtUhJOR%2FYc%2BdZzZiHOHQiZd%2Bx6ysViSAL0elI5d7ThrBFk%2FFf9G81pJIeSXPXwG13vVVWzxnrTW5sysTI8ZgVuh3mMZyQXdyxxOn2jD6kvR3PjI7DmlCl3Uvtc%2B%2F3KEydoE4TgDVoT%2Bn3fGTV0wwrdqswgY63gKW3ZENCB4J5PwW0ZmrTvMu29s20oB5aGWcKlbiroNS8fjraWYFlZTh%2BOYVYAWjF7L%2FrEW6kSUnPWZuPkqhnMqPAq4UbAsVe%2FSvpROOoIr2gN6Ovs3%2FoZyKq39YvkFUEQWO2lPmFSb5Odc8YNwMkDs3B3w0HC2hZlJFYtRX4NArknnNiZ%2FBa2jJ4PQg7qtSBmIpm9tVEWOZgQKME3hqqvfxXGtQdXZp4t3TvwjPGLQcpTZIkUPNhIOAKaBPoBPZIkjANYkgAkV4BwuZxp9mNs0oDGSs52O4yYA1tmmwBUr8HeAJwkXavIIg%2BWR1b7cJWYZ39OMhKgqyHSPeOURBgumdMcJk3uIqpmumX0YHVpy1CmBq0CGh8Vdm6TcYAzhSmd4YIfxP9cIu4xqX1sjcfpSz%2BQbDFKFw%2FLwoJ70lMat4EKqjDUUNSpO7WE5%2BwMLV3YDvVXFqs1AvYqFGsyCaoA%3D%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=ASIA45Y2RVI5TUDOZD5R%2F20250612%2Fus-east-2%2Fs3%2Faws4_request&X-Amz-Date=20250612T194052Z&X-Amz-Expires=43200&X-Amz-SignedHeaders=host&X-Amz-Signature=37c21e2cda430fa051a1724c2e97415fd5e4385aaf866b6d018342381607aa0d"
+        # Process video using Remotion
+        remotion_service = RemotionService()
+        output_key = "output"
+        result = remotion_service.process_video(
+            video_url,                # e.g., "https://s3.amazonaws.com/bucket/video.mp4"
+            output_key,               # e.g., "processed/myvideo.mp4"
+            caption_clips,            # e.g., a list of caption dicts
+            broll_enabled=True,       # or False
+            video_width=video_width,          # or your desired width
+            video_height=video_height,        # or your desired height
+            fps=fps,                   # or your video's FPS
+            font="Montserrat-Bold",   # or your desired font
+            color="white",            # or your desired color
+            font_size=32,             # or your desired font size
+            highlight_type="fill" # or "none", etc.
+        )
+        
+        
+    except Exception as e:
+        logger.error(f"Error in debug process: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
+async def main():
+
+    await debug_process_video(
+            input_path="input/brett_1.mp4"
+        )
 
 if __name__ == "__main__":
-    main() 
+    asyncio.run(main())
 
 def resize(clip, width=None, height=None, newsize=None):
     """Resize a video clip while maintaining aspect ratio"""

@@ -55,7 +55,7 @@ function ResultsPage() {
       <h1 className="text-4xl font-bold text-white mb-8">Your Processed Video</h1>
       
       {videoUrl && (
-        <div className="w-full max-w-4xl mb-8">
+        <div className="w-full max-w-2xl mb-8 px-4">
           <video
             src={videoUrl}
             className="w-full rounded-lg shadow-lg"

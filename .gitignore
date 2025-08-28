@@ -22,6 +22,7 @@ wheels/
 
 # Virtual Environment
 venv/
+myenv/
 env/
 ENV/
 .env
@@ -43,7 +44,32 @@ frontend/node_modules/
 *.txt
 !requirements.txt
 !README.md
+node_modules/
+
+# Remotion specific
+remotion/node_modules/
+remotion/.remotion/
+remotion/out/
+remotion/dist/
+remotion/.next/
+remotion/.cache/
+remotion/coverage/
+remotion/.env
+remotion/.env.local
+remotion/.env.development.local
+remotion/.env.test.local
+remotion/.env.production.local
+remotion/npm-debug.log*
+remotion/yarn-debug.log*
+remotion/yarn-error.log*
 
 # OS specific
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+# Additional temporary files
+*.tmp
+*.temp
+.*.swp
+.*.swo 
+remotion/build

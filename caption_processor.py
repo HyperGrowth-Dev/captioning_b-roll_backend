@@ -1,27 +1,31 @@
 import whisper
-from moviepy.video.VideoClip import TextClip
 import logging
 import os
+from typing import List, Dict
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Get logger
 logger = logging.getLogger(__name__)
 
 class CaptionProcessor:
-    def __init__(self):
-        print("Loading Whisper model...")
+    def __init__(self, fps: int = 30):
+        logger.info("Initializing CaptionProcessor")
+        logger.info(f"Loading Whisper model with fps={fps}...")
         self.model = whisper.load_model("base")
         self.max_segment_duration = 5.0  # Maximum duration for a segment in seconds
-        self.max_words_per_segment = 3  # Maximum number of words per segment
+        self.max_words_per_segment = 5  # Maximum number of words per segment
+        self.fps = fps  # Initialize fps attribute
         
         # Get the absolute path to the static/fonts directory
         self.base_dir = os.path.dirname(os.path.abspath(__file__))
         self.fonts_dir = os.path.join(self.base_dir, 'static', 'fonts')
+        logger.info(f"Fonts directory: {self.fonts_dir}")
 
     def split_long_segment(self, segment):
         """Split a segment into smaller ones with at most 3 words each"""
+        logger.debug(f"Splitting segment: {segment}")
         words = segment.get('words', [])
         if not words:
+            logger.debug("No words in segment, returning original")
             return [segment]
 
         new_segments = []
@@ -42,6 +46,7 @@ class CaptionProcessor:
                     'text': ' '.join(w['word'] for w in current_words),
                     'words': current_words.copy()
                 }
+                logger.debug(f"Created new segment: {new_segment}")
                 new_segments.append(new_segment)
                 
                 # Reset for next segment
@@ -57,14 +62,16 @@ class CaptionProcessor:
                 'text': ' '.join(w['word'] for w in current_words),
                 'words': current_words
             }
+            logger.debug(f"Created final segment: {new_segment}")
             new_segments.append(new_segment)
 
+        logger.info(f"Split segment into {len(new_segments)} parts")
         return new_segments
 
     def generate_captions(self, audio_path):
         """Generate captions from audio using Whisper with word-level timestamps"""
         try:
-            print("Transcribing audio with Whisper...")
+            logger.info(f"Starting transcription of audio file: {audio_path}")
             # First pass with word timestamps
             result = self.model.transcribe(
                 audio_path,
@@ -81,65 +88,64 @@ class CaptionProcessor:
                 duration = segment['end'] - segment['start']
                 word_count = len(segment.get('words', []))
                 
+                logger.debug(f"Processing segment: duration={duration}, word_count={word_count}")
+                
                 if duration > self.max_segment_duration or word_count > self.max_words_per_segment:
                     # Split the segment
+                    logger.info(f"Splitting long segment: duration={duration}, word_count={word_count}")
                     split_segments = self.split_long_segment(segment)
                     processed_segments.extend(split_segments)
                 else:
                     processed_segments.append(segment)
             
-            print(f"Transcription successful! Created {len(processed_segments)} segments")
+            logger.info(f"Transcription successful! Created {len(processed_segments)} segments")
             return processed_segments
         except Exception as e:
-            print(f"Error processing audio: {e}")
+            logger.error(f"Error processing audio: {str(e)}")
+            logger.error(f"Stack trace: {traceback.format_exc()}")
             return None
 
-    def create_caption_clips(self, segments, video_width, video_height, font="Montserrat-Bold", color="white", font_size=48):
-        """Create individual caption clips for each segment with custom font and color settings"""
+    def create_caption_clips(self, segments: List[Dict], video_width: int, video_height: int, font: str = "Barlow-BlackItalic", color: str = "white", font_size: int = 32) -> List[Dict]:
+        """Create individual caption clips with word-level timing information."""
+        logger.info(f"Starting caption clip creation for {len(segments)} segments")
+        
         caption_clips = []
         
-        # Get the absolute path to the font file
-        font_path = os.path.join(self.fonts_dir, f"{font}.ttf")
-        print(f"Using font path: {font_path}")  # Debug print
-        print(f"Using font size: {font_size}")  # Debug print
-        
-        # Check if font file exists
-        if not os.path.exists(font_path):
-            print(f"Font file not found: {font_path}")  # Debug print
-            # Fallback to system font
-            font_path = "/System/Library/Fonts/Helvetica.ttc"
-            print(f"Falling back to: {font_path}")  # Debug print
-        
         # Calculate text positioning based on video dimensions
-        # Position text in the bottom third of the video
+        logger.info("Step 3: Calculating text positioning")
         text_y_position = video_height * 0.7  # 70% from the top
         max_text_width = video_width * 0.8  # 80% of video width
-        padding = 20  # Padding in pixels
+        logger.debug(f"Text position: y={text_y_position}, max_width={max_text_width}")
         
-        for segment in segments:
-            start_time = segment['start']
-            end_time = segment['end']
-            text = segment['text'].strip()
+        logger.info("Step 4: Processing segments")
+        for i, segment in enumerate(segments):
+            logger.debug(f"Processing segment {i+1}/{len(segments)}: {segment['text']}")
+            words = []
+            if 'words' in segment:
+                logger.debug(f"Processing {len(segment['words'])} words for segment {i+1}")
+                for word in segment['words']:
+                    logger.debug(f"Processing word: {word['word']} ({word['start']}-{word['end']})")
+                    words.append({
+                        'text': word['word'],
+                        'start': word['start'],
+                        'end': word['end']
+                    })
             
-            if text:  # Only create clips for non-empty text
-                # Create text with custom settings
-                caption_clip = (TextClip(text.upper(),
-                                    font=font_path,
-                                    fontsize=font_size,
-                                    color=color,
-                                    size=(max_text_width, None),  # Set max width, height auto
-                                    method='caption',  # Enable word wrapping
-                                    align='center')  # Center align text
-                            .set_duration(end_time - start_time)
-                            .set_position(('center', text_y_position))
-                            .set_start(start_time))
-                
-                caption_clips.append(caption_clip)
+            logger.debug(f"Creating caption clip for segment {i+1}")
+            caption_clip = {
+                'text': segment['text'],
+                'startFrame': int(segment['start'] * self.fps),
+                'endFrame': int(segment['end'] * self.fps),
+                'words': words if words else None  # Only include words if there are any
+            }
+            logger.debug(f"Created caption clip: {caption_clip}")
+            caption_clips.append(caption_clip)
         
+        logger.info(f"Step 5: Successfully created {len(caption_clips)} caption clips")
         return caption_clips
 
     def save_transcript(self, segments, output_dir='output'):
-        """Save transcript to a text file"""
+        """Save transcript to a text file. This is used for debugging purposes"""
         try:
             os.makedirs(output_dir, exist_ok=True)
             transcript_path = os.path.join(output_dir, 'transcript.txt')
