@@ -105,19 +105,13 @@ class CaptionProcessor:
             logger.error(f"Stack trace: {traceback.format_exc()}")
             return None
 
-    def create_caption_clips(self, segments: List[Dict], video_width: int, video_height: int, font: str = "Barlow-BlackItalic", color: str = "white", font_size: int = 32) -> List[Dict]:
+    def create_caption_clips(self, segments: List[Dict]) -> List[Dict]:
         """Create individual caption clips with word-level timing information."""
         logger.info(f"Starting caption clip creation for {len(segments)} segments")
         
         caption_clips = []
         
-        # Calculate text positioning based on video dimensions
-        logger.info("Step 3: Calculating text positioning")
-        text_y_position = video_height * 0.7  # 70% from the top
-        max_text_width = video_width * 0.8  # 80% of video width
-        logger.debug(f"Text position: y={text_y_position}, max_width={max_text_width}")
-        
-        logger.info("Step 4: Processing segments")
+        logger.info("Step 3: Processing segments")
         for i, segment in enumerate(segments):
             logger.debug(f"Processing segment {i+1}/{len(segments)}: {segment['text']}")
             words = []

@@ -4,8 +4,10 @@ from fastapi.responses import JSONResponse
 from typing import List, Optional
 import json
 import logging
+import time
 from backend.services.remotion_service import RemotionService
 from backend.services.s3_service import S3Service
+from broll_analyzer import BrollAnalyzer
 from utils import FFmpegUtils
 import os
 import uuid
@@ -210,14 +212,13 @@ async def process_video(
                 detail=f"Failed to get video URL: {str(e)}"
             )
         # Download video to temp directory
-        temp_dir = "temp"
+        temp_dir = f"temp_{uuid.uuid4().hex}"
         os.makedirs(temp_dir, exist_ok=True)
         video_path = os.path.join(temp_dir, f"{input_key}.mp4")
         await s3_service.download_file(input_key, video_path)
 
         # Get video info including FPS
         width, height, duration, fps = FFmpegUtils.get_video_info(video_path)
-        logger.info(f"Video FPS: {fps}, Duration: {duration}")
 
         # Extract audio
         audio_path = os.path.join(temp_dir, f"{input_key}.wav")
@@ -233,14 +234,83 @@ async def process_video(
                 detail="Failed to generate captions"
             )
 
-        # Create caption clips
-        caption_clips = caption_processor.create_caption_clips(
-            segments,
-            video_width=video_width,
-            video_height=video_height,
-            font=font,
-            color=color,
-            font_size=font_size
+        # Run caption processing and b-roll analysis in parallel
+        import asyncio
+        
+        async def process_captions():
+            return caption_processor.create_caption_clips(segments)
+        
+        async def process_broll():
+            if not broll_enabled:
+                return []
+            
+            start_time = time.time()
+            logger.info("B-roll enabled, starting b-roll processing")
+            # Initialize BrollAnalyzer
+            pexels_key = os.getenv('PEXELS_API_KEY')
+            if not pexels_key:
+                raise HTTPException(
+                    status_code=500,
+                    detail="PEXELS_API_KEY is required for b-roll"
+                )
+            
+            broll_analyzer = BrollAnalyzer(pexels_key)
+            logger.info("Initialized BrollAnalyzer")
+            
+            # Get b-roll suggestions with parallel processing
+            broll_suggestions = await broll_analyzer.get_broll_suggestions_async(
+                segments=segments,
+                video_duration=duration,
+                video_width=video_width,
+                video_height=video_height,
+                fps=fps
+            )
+            logger.info(f"Got {len(broll_suggestions)} b-roll suggestions")
+            
+            # Process b-roll suggestions
+            import re
+            broll_clips = []
+            for suggestion in broll_suggestions:
+                if suggestion['broll_options']:
+                    broll_option = suggestion['broll_options'][0]
+                    
+                    # Extract frame rate from URL or filename
+                    fps_match = re.search(r'(\d+)fps', broll_option['url'])
+                    broll_fps = int(fps_match.group(1)) if fps_match else fps
+                    
+                    # Convert timing to seconds first
+                    start_time = suggestion['timestamp']
+                    end_time = suggestion['timestamp'] + suggestion['duration']
+                    
+                    # Convert seconds to frames using composition FPS
+                    start_frame = int(start_time * fps)
+                    end_frame = int(end_time * fps)
+                    transition_frames = int(0.27 * fps)  # 0.27s transition at composition FPS
+                    
+                    # Create b-roll clip with converted timing
+                    broll_clips.append({
+                        'url': broll_option['url'],
+                        'startFrame': start_frame,
+                        'endFrame': end_frame,
+                        'transitionDuration': transition_frames,
+                        'originalFps': broll_fps  # Keep original FPS for reference
+                    })
+                    
+                    logger.info(f"Added b-roll clip with timing: start={start_frame} frames ({start_time:.2f}s), end={end_frame} frames ({end_time:.2f}s), original_fps={broll_fps}, composition_fps={fps}")
+            
+            end_time = time.time()
+            processing_time = end_time - start_time
+            logger.info(f"Final b-roll clips count: {len(broll_clips)}")
+            logger.info(f"B-roll processing completed in {processing_time:.2f} seconds")
+            if broll_clips:
+                logger.info(f"B-roll clips: {json.dumps(broll_clips, indent=2)}")
+            
+            return broll_clips
+        
+        # Execute both tasks in parallel
+        caption_clips, broll_clips = await asyncio.gather(
+            process_captions(),
+            process_broll()
         )
 
         # Process video using Remotion
@@ -249,20 +319,20 @@ async def process_video(
             video_url, 
             output_key, 
             caption_clips, 
-            broll_enabled=broll_enabled,
+            broll_clips=broll_clips,
             video_width=video_width,
             video_height=video_height,
-            fps=fps,  # Pass the FPS to Remotion service
+            fps=fps,
             font=font,
             color=color,
             font_size=font_size,
             highlight_type=highlight_type,
-            video_duration=duration  # Pass the actual video duration
+            video_duration=duration
         )
         
-        # Clean up temporary files
-        os.remove(video_path)
-        os.remove(audio_path)
+        # Clean up temporary files and directory
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
         
         return JSONResponse(content=result)
 
