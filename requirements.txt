@@ -10,3 +10,4 @@ python-multipart==0.0.9
 openai-whisper==20231117
 ffmpeg-python==0.2.0
 remotion-lambda==4.0.273
+aiohttp>=3.8.0

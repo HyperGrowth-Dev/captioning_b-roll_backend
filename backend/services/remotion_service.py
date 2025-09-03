@@ -2,12 +2,9 @@ import os
 import logging
 import json
 import traceback
-import re
 from remotion_lambda import RemotionClient, RenderMediaParams, Privacy, ValidStillImageFormats
 from dotenv import load_dotenv
 from typing import Dict, Any
-from broll_analyzer import BrollAnalyzer
-from utils import FFmpegUtils
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -29,9 +26,9 @@ class RemotionService:
             function_name=self.function_name
         )
 
-    def process_video(self, video_url: str, output_key: str, captions: list = None, broll_enabled: bool = True, video_width: int = None, video_height: int = None, fps: float = 30, font: str = 'Barlow-BlackItalic', color: str = 'white', font_size: int = 48, highlight_type: str = 'background', video_duration: float = None) -> dict:
+    def process_video(self, video_url: str, output_key: str, captions: list = None, broll_clips: list = None, video_width: int = None, video_height: int = None, fps: float = 30, font: str = 'Barlow-BlackItalic', color: str = 'white', font_size: int = 48, highlight_type: str = 'background', video_duration: float = None) -> dict:
         try:
-            logger.info(f"RemotionService processing video with broll_enabled={broll_enabled}, fps={fps}, duration={video_duration}")
+            logger.info(f"RemotionService processing video with fps={fps}, duration={video_duration}")
             
             # Use provided dimensions
             main_width = video_width or 607  # Default to 607 if not provided
@@ -45,79 +42,17 @@ class RemotionService:
             elif video_duration is not None:
                 logger.info(f"Using provided video duration: {video_duration:.2f}s")
             
-            # Convert captions to Remotion format if provided
-            remotion_captions = None
-            if captions:
-                logger.info(f"Converting {len(captions)} captions to Remotion format")
-                remotion_captions = [
-                    {
-                        "text": caption["text"],
-                        "startFrame": caption["startFrame"],
-                        "endFrame": caption["endFrame"],
-                        "words": caption.get("words", None)
-                    }
-                    for caption in captions
-                ]
+            # Use captions directly if provided
+            remotion_captions = captions or []
 
-            # Get b-roll clips if enabled
-            broll_clips = []
-            if broll_enabled:
-                logger.info("B-roll enabled, starting b-roll processing")
-                # Initialize BrollAnalyzer
-                pexels_key = os.getenv('PEXELS_API_KEY')
-                if not pexels_key:
-                    raise ValueError("PEXELS_API_KEY is required for b-roll")
-                
-                broll_analyzer = BrollAnalyzer(pexels_key)
-                logger.info("Initialized BrollAnalyzer")
-                
-                # Get b-roll suggestions
-                broll_suggestions = broll_analyzer.get_broll_suggestions(
-                    segments=captions,
-                    video_duration=video_duration,
-                    video_width=main_width,
-                    video_height=main_height,
-                    fps=fps
-                )
-                logger.info(f"Got {len(broll_suggestions)} b-roll suggestions")
-                
-                # Process b-roll suggestions
-                for suggestion in broll_suggestions:
-                    if suggestion['broll_options']:
-                        broll_option = suggestion['broll_options'][0]
-                        
-                        # Extract frame rate from URL or filename
-                        fps_match = re.search(r'(\d+)fps', broll_option['url'])
-                        broll_fps = int(fps_match.group(1)) if fps_match else fps
-                        
-                        # Convert timing to seconds first
-                        start_time = suggestion['timestamp']
-                        end_time = suggestion['timestamp'] + suggestion['duration']
-                        
-                        # Convert seconds to frames using composition FPS
-                        start_frame = int(start_time * fps)
-                        end_frame = int(end_time * fps)
-                        transition_frames = int(0.27 * fps)  # 0.27s transition at composition FPS
-                        
-                        # Create b-roll clip with converted timing
-                        broll_clips.append({
-                            'url': broll_option['url'],
-                            'startFrame': start_frame,
-                            'endFrame': end_frame,
-                            'transitionDuration': transition_frames,
-                            'originalFps': broll_fps  # Keep original FPS for reference
-                        })
-                        
-                        logger.info(f"Added b-roll clip with timing: start={start_frame} frames ({start_time:.2f}s), end={end_frame} frames ({end_time:.2f}s), original_fps={broll_fps}, composition_fps={fps}")
-
-            logger.info(f"Final b-roll clips count: {len(broll_clips)}")
-            if broll_clips:
-                logger.info(f"B-roll clips: {json.dumps(broll_clips, indent=2)}")
+            # Use provided b-roll clips or empty list
+            broll_clips = broll_clips or []
+            logger.info(f"Using {len(broll_clips)} b-roll clips")
 
             # Set render request parameters
             input_props = {
                 'videoSrc': video_url,
-                'captions': remotion_captions or [],
+                'captions': remotion_captions,
                 'font': font,
                 'fontSize': font_size,
                 'color': color,
