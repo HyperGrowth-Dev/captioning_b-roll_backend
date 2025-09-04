@@ -6,6 +6,7 @@ import { ArrowDownTrayIcon } from '@heroicons/react/24/outline';
 import clsx from 'clsx';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSpinner } from '@fortawesome/free-solid-svg-icons';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const fonts = [
   { 
@@ -106,6 +107,7 @@ const colors = [
 function ProcessingPage() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { getAccessTokenSilently } = useAuth0(); // Move this to the top level
   const [selectedFile, setSelectedFile] = useState(location.state?.file || null);
   const [selectedFont, setSelectedFont] = useState(null);
   const [selectedColor, setSelectedColor] = useState(null);
@@ -206,6 +208,12 @@ function ProcessingPage() {
       setCurrentStage('upload');
       setStageProgress(0);
 
+      // Get the Auth0 access token first
+      const token = await getAccessTokenSilently();
+      console.log('Got Auth0 token:', token ? 'Token received' : 'No token');
+      console.log('Token length:', token ? token.length : 0);
+      console.log('Token preview:', token ? `${token.substring(0, 20)}...` : 'No token');
+
       // Get video dimensions from videoRef
       const videoWidth = videoRef.current?.videoWidth || 607;
       const videoHeight = videoRef.current?.videoHeight || 1080;
@@ -214,10 +222,10 @@ function ProcessingPage() {
       console.log('Starting video upload...');
       setProcessingStatus('Uploading video to cloud storage...');
       
-      // Upload with real progress tracking
+      // Upload with real progress tracking and token
       const { key: inputKey } = await uploadVideo(selectedFile, (progress) => {
         setStageProgress(progress);
-      });
+      }, token); // Pass the token
       console.log('Video uploaded successfully with key:', inputKey);
 
       // Step 2: Process video (Caption generation)
@@ -245,7 +253,8 @@ function ProcessingPage() {
           setCurrentStage('rendering');
           setProcessingStatus('Rendering final video with captions...');
           setStageProgress(renderingProgress);
-        }
+        },
+        token // Pass the token
       );
       console.log('Video processing initiated:', processData);
 

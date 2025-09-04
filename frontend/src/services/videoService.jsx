@@ -3,13 +3,17 @@ import axios from 'axios';
 // Use import.meta.env for Vite environment variables
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-export const uploadVideo = async (file, onProgress) => {
+export const uploadVideo = async (file, onProgress, token) => {
   try {
     console.log('Starting video upload process...');
     
-    // Get upload URL from backend
+    // Get upload URL from backend with authentication
     console.log('Requesting upload URL from backend...');
-    const { data: { upload_url, key } } = await axios.post(`${API_URL}/get-upload-url`);
+    const { data: { upload_url, key } } = await axios.post(`${API_URL}/api/get-upload-url`, {}, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     console.log('Received upload URL:', upload_url);
     
     // Upload directly to S3
@@ -48,7 +52,7 @@ export const uploadVideo = async (file, onProgress) => {
   }
 };
 
-export const processVideo = async (inputKey, options, onCaptionProgress, onRenderingProgress) => {
+export const processVideo = async (inputKey, options, onCaptionProgress, onRenderingProgress, token) => {
   try {
     console.log('Starting video processing with options:', { inputKey, options });
     
@@ -78,10 +82,11 @@ export const processVideo = async (inputKey, options, onCaptionProgress, onRende
       simulateCaptionProgress(); // Don't await this - let it run in background
     }
     
-    // Make the API call immediately (don't wait for progress simulation)
-    const { data } = await axios.post(`${API_URL}/process`, formData, {
+    // Make the API call immediately (don't wait for progress simulation) with authentication
+    const { data } = await axios.post(`${API_URL}/api/process`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
+        'Authorization': `Bearer ${token}`
       },
     });
     console.log('Processing request successful:', data);
@@ -97,7 +102,7 @@ export const processVideo = async (inputKey, options, onCaptionProgress, onRende
       onRenderingProgress(0); // This will trigger the stage transition
     }
 
-    // Poll for rendering progress
+    // Poll for rendering progress with authentication
     let isComplete = false;
     let downloadUrl = null;
     let pollCount = 0;
@@ -105,7 +110,11 @@ export const processVideo = async (inputKey, options, onCaptionProgress, onRende
     
     while (!isComplete && pollCount < maxPolls) {
       try {
-        const { data: progressData } = await axios.get(`${API_URL}/check_progress/${data.renderId}`);
+        const { data: progressData } = await axios.get(`${API_URL}/api/check_progress/${data.renderId}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
         console.log('Progress check:', progressData);
         
         // Use the actual progress from Remotion if available, otherwise calculate based on poll count

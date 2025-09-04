@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, BackgroundTasks, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from typing import List, Optional
@@ -14,6 +14,8 @@ import uuid
 from pydantic import BaseModel
 import traceback
 from caption_processor import CaptionProcessor
+from fastapi.security import HTTPBearer
+from backend.services.auth0_service import Auth0Service
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -48,6 +50,17 @@ app.add_middleware(
 remotion_service = RemotionService()
 s3_service = S3Service()
 
+# Initialize Auth0 service
+auth0_service = Auth0Service()
+
+# Create authentication dependency
+auth_dependency = auth0_service.create_auth_dependency()
+
+# Authentication Notes:
+# - Public endpoints (no auth required): /api/, /api/health, /api/get-download-url/{key}, /api/check-file/{key}
+# - Protected endpoints (auth required): /api/auth/test, /api/process, /api/upload, /api/get-upload-url, /api/check_progress/{render_id}
+# - All protected endpoints require: Authorization: Bearer <JWT_TOKEN> header
+
 class Caption(BaseModel):
     text: str
     start: float
@@ -67,15 +80,19 @@ async def root():
     return {
         "name": "Video Caption and B-Roll API",
         "version": "1.0.0",
+        "authentication": "Most endpoints require Auth0 JWT token in Authorization header",
         "endpoints": {
             "/": "This information",
-            "/health": "Check API health status",
+            "/health": "Check API health status (no auth required)",
             "/docs": "API documentation (Swagger UI)",
             "/redoc": "API documentation (ReDoc)",
-            "/api/process": "Process a video",
-            "/api/upload": "Upload a video",
-            "/api/get-upload-url": "Get presigned URL for upload",
-            "/api/get-download-url/{key}": "Get presigned URL for download"
+            "/api/auth/test": "Test authentication (requires auth)",
+            "/api/process": "Process a video (requires auth)",
+            "/api/upload": "Upload a video (requires auth)",
+            "/api/get-upload-url": "Get presigned URL for upload (requires auth)",
+            "/api/get-download-url/{key}": "Get presigned URL for download (no auth required)",
+            "/api/check-file/{key}": "Check if file exists (no auth required)",
+            "/api/check_progress/{render_id}": "Check processing progress (requires auth)"
         }
     }
 
@@ -106,10 +123,12 @@ async def health_check():
         )
 
 @app.post("/api/get-upload-url")
-async def get_upload_url():
+async def get_upload_url(token: dict = Depends(auth_dependency)):
     """Generate a pre-signed URL for uploading a video to S3"""
     try:
-        logger.info("Generating upload URL")
+        # Get user ID from authenticated token
+        user_id = token.get("sub")
+        logger.info(f"Generating upload URL for user: {user_id}")
         
         # Generate a unique key for the upload
         upload_key = f"uploads/{uuid.uuid4()}.mp4"
@@ -191,6 +210,7 @@ async def check_file(key: str):
 
 @app.post("/api/process")
 async def process_video(
+    token: dict = Depends(auth_dependency),  # Add this line
     input_key: str = Form(...),
     font: str = Form(...),
     color: str = Form(...),
@@ -201,6 +221,11 @@ async def process_video(
     video_height: int = Form(1080)
 ):
     try:
+        # Verify the token and get user info
+        user_id = token.get("sub")  # Auth0 user ID
+        
+        logger.info(f"Processing video for user: {user_id}")
+        
         # Get the S3 URL for the input video
         try:
             video_url = s3_service.get_download_url(input_key)
@@ -341,8 +366,12 @@ async def process_video(
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/check_progress/{render_id}")
-async def check_progress(render_id: str):
+async def check_progress(render_id: str, token: dict = Depends(auth_dependency)):
     try:
+        # Get user ID from authenticated token
+        user_id = token.get("sub")
+        logger.info(f"Checking progress for user: {user_id}, render_id: {render_id}")
+        
         result = remotion_service.check_progress(render_id)
         return result
     except Exception as e:
@@ -350,8 +379,15 @@ async def check_progress(render_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/upload")
-async def upload_video(file: UploadFile = File(...)):
+async def upload_video(
+    file: UploadFile = File(...),
+    token: dict = Depends(auth_dependency)
+):
     try:
+        # Get user ID from authenticated token
+        user_id = token.get("sub")
+        logger.info(f"Uploading video for user: {user_id}")
+        
         # Generate a unique filename
         file_extension = os.path.splitext(file.filename)[1]
         unique_filename = f"{uuid.uuid4()}{file_extension}"
@@ -362,6 +398,35 @@ async def upload_video(file: UploadFile = File(...)):
         return {"url": s3_url}
     except Exception as e:
         logger.error(f"Error uploading video: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/auth/test")
+async def test_auth(token: dict = Depends(auth_dependency)):
+    """Test endpoint to verify Auth0 authentication is working"""
+    try:
+        # The token is already verified and decoded by Authlib!
+        # Try to get user info from Auth0
+        try:
+            user_info = auth0_service.get_user_info(token.get('access_token', ''))
+            return {
+                "message": "Authentication successful!",
+                "user_id": token.get("sub"),
+                "email": user_info.get("email"),
+                "name": user_info.get("name"),
+                "email_verified": user_info.get("email_verified", False)
+            }
+        except:
+            # If user info fails, return basic token info
+            return {
+                "message": "Authentication successful!",
+                "user_id": token.get("sub"),
+                "email": token.get("email"),
+                "name": token.get("name"),
+                "email_verified": token.get("email_verified", False),
+                "note": "User info fetched from token (userinfo endpoint may be unavailable)"
+            }
+    except Exception as e:
+        logger.error(f"Authentication test failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
